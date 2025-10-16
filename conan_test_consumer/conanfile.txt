@@ -1,6 +1,0 @@
-[requires]
-unilink/0.1.0
-
-[generators]
-CMakeDeps
-CMakeToolchain
