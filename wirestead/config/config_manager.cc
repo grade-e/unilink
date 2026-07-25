@@ -61,15 +61,24 @@ struct ConfigManager::Impl {
     return ValidationResult::success();
   }
 
-  void notify_change(const std::string& key, const std::any& old_value, const std::any& new_value) {
+  // Must be called while holding mutex_. Returns an empty callback if none is
+  // registered for `key`.
+  ConfigChangeCallback change_callback_for(const std::string& key) const {
     auto it = change_callbacks_.find(key);
-    if (it != change_callbacks_.end()) {
-      try {
-        it->second(key, old_value, new_value);
-      } catch (const std::exception& e) {
-        WIRESTEAD_LOG_ERROR("config_manager", "callback",
-                            "Error in change callback for key '" + key + "': " + std::string(e.what()));
-      }
+    return it != change_callbacks_.end() ? it->second : ConfigChangeCallback{};
+  }
+
+  // Must be called *without* holding mutex_: it invokes user code, and a
+  // callback that reenters get()/set()/has() on this ConfigManager would
+  // otherwise deadlock on the non-recursive mutex_.
+  static void invoke_change_callback(const ConfigChangeCallback& callback, const std::string& key,
+                                     const std::any& old_value, const std::any& new_value) {
+    if (!callback) return;
+    try {
+      callback(key, old_value, new_value);
+    } catch (const std::exception& e) {
+      WIRESTEAD_LOG_ERROR("config_manager", "callback",
+                          "Error in change callback for key '" + key + "': " + std::string(e.what()));
     }
   }
 
@@ -142,27 +151,35 @@ bool ConfigManager::has(const std::string& key) const {
 }
 
 ValidationResult ConfigManager::set(const std::string& key, const std::any& value) {
-  std::lock_guard<std::mutex> lock(impl_->mutex_);
-
-  auto validation_result = impl_->validate_value(key, value);
-  if (!validation_result.is_valid) {
-    return validation_result;
-  }
-
   std::any old_value;
   bool had_key = false;
-  auto it = impl_->config_items_.find(key);
-  if (it != impl_->config_items_.end()) {
-    old_value = it->second.value;
-    had_key = true;
-    it->second.value = value;
-  } else {
-    ConfigItem item(key, value, ConfigType::String, false);
-    impl_->config_items_[key] = item;
+  ConfigChangeCallback callback;
+
+  {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+
+    auto validation_result = impl_->validate_value(key, value);
+    if (!validation_result.is_valid) {
+      return validation_result;
+    }
+
+    auto it = impl_->config_items_.find(key);
+    if (it != impl_->config_items_.end()) {
+      old_value = it->second.value;
+      had_key = true;
+      it->second.value = value;
+    } else {
+      ConfigItem item(key, value, ConfigType::String, false);
+      impl_->config_items_[key] = item;
+    }
+
+    if (had_key) {
+      callback = impl_->change_callback_for(key);
+    }
   }
 
   if (had_key) {
-    impl_->notify_change(key, old_value, value);
+    Impl::invoke_change_callback(callback, key, old_value, value);
   }
 
   return ValidationResult::success();
@@ -255,74 +272,97 @@ bool ConfigManager::save_to_file(const std::string& filepath) const {
 }
 
 bool ConfigManager::load_from_file(const std::string& filepath) {
-  std::lock_guard<std::mutex> lock(impl_->mutex_);
+  struct PendingNotification {
+    std::string key;
+    std::any old_value;
+    std::any new_value;
+    ConfigChangeCallback callback;
+  };
+  std::vector<PendingNotification> pending_notifications;
 
-  try {
-    std::ifstream file(filepath);
-    if (!file.is_open()) {
+  // Parsing and mutating config_items_ stays under the lock; change
+  // callbacks are invoked afterward (below) so a callback that reenters
+  // get()/set() on this ConfigManager doesn't deadlock on mutex_.
+  const bool load_result = [&]() {
+    std::lock_guard<std::mutex> lock(impl_->mutex_);
+
+    try {
+      std::ifstream file(filepath);
+      if (!file.is_open()) {
+        return false;
+      }
+
+      std::string line;
+      while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '#') {
+          continue;
+        }
+
+        size_t pos = line.find('=');
+        if (pos != std::string::npos) {
+          std::string key = line.substr(0, pos);
+          std::string value_str = line.substr(pos + 1);
+
+          key.erase(0, key.find_first_not_of(" \t"));
+          key.erase(key.find_last_not_of(" \t") + 1);
+          value_str.erase(0, value_str.find_first_not_of(" \t"));
+          value_str.erase(value_str.find_last_not_of(" \t") + 1);
+
+          ConfigType type = ConfigType::String;
+          auto it = impl_->config_items_.find(key);
+          bool exists = (it != impl_->config_items_.end());
+
+          if (exists) {
+            type = it->second.type;
+          } else {
+            if (value_str == "true" || value_str == "false") {
+              type = ConfigType::Boolean;
+            } else if (std::all_of(value_str.begin(), value_str.end(),
+                                   [](char c) { return std::isdigit(c) || c == '-'; })) {
+              type = ConfigType::Integer;
+            } else if (std::count(value_str.begin(), value_str.end(), '.') == 1 &&
+                       std::all_of(value_str.begin(), value_str.end(),
+                                   [](char c) { return std::isdigit(c) || c == '.' || c == '-'; })) {
+              type = ConfigType::Double;
+            }
+          }
+
+          std::any value = impl_->deserialize_value(value_str, type);
+
+          if (exists) {
+            auto result = impl_->validate_value(key, value);
+            if (!result.is_valid) {
+              WIRESTEAD_LOG_ERROR("config_manager", "load",
+                                  "Validation failed for key '" + key + "': " + result.error_message);
+              continue;
+            }
+
+            std::any old_value = it->second.value;
+            it->second.value = value;
+            auto callback = impl_->change_callback_for(key);
+            if (callback) {
+              pending_notifications.push_back({key, old_value, value, std::move(callback)});
+            }
+          } else {
+            ConfigItem item(key, value, type, false);
+            impl_->config_items_[key] = item;
+          }
+        }
+      }
+
+      return true;
+    } catch (const std::exception& e) {
+      WIRESTEAD_LOG_ERROR("config_manager", "load", "Error loading configuration: " + std::string(e.what()));
       return false;
     }
+  }();
 
-    std::string line;
-    while (std::getline(file, line)) {
-      if (line.empty() || line[0] == '#') {
-        continue;
-      }
-
-      size_t pos = line.find('=');
-      if (pos != std::string::npos) {
-        std::string key = line.substr(0, pos);
-        std::string value_str = line.substr(pos + 1);
-
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t") + 1);
-        value_str.erase(0, value_str.find_first_not_of(" \t"));
-        value_str.erase(value_str.find_last_not_of(" \t") + 1);
-
-        ConfigType type = ConfigType::String;
-        auto it = impl_->config_items_.find(key);
-        bool exists = (it != impl_->config_items_.end());
-
-        if (exists) {
-          type = it->second.type;
-        } else {
-          if (value_str == "true" || value_str == "false") {
-            type = ConfigType::Boolean;
-          } else if (std::all_of(value_str.begin(), value_str.end(),
-                                 [](char c) { return std::isdigit(c) || c == '-'; })) {
-            type = ConfigType::Integer;
-          } else if (std::count(value_str.begin(), value_str.end(), '.') == 1 &&
-                     std::all_of(value_str.begin(), value_str.end(),
-                                 [](char c) { return std::isdigit(c) || c == '.' || c == '-'; })) {
-            type = ConfigType::Double;
-          }
-        }
-
-        std::any value = impl_->deserialize_value(value_str, type);
-
-        if (exists) {
-          auto result = impl_->validate_value(key, value);
-          if (!result.is_valid) {
-            WIRESTEAD_LOG_ERROR("config_manager", "load",
-                                "Validation failed for key '" + key + "': " + result.error_message);
-            continue;
-          }
-
-          std::any old_value = it->second.value;
-          it->second.value = value;
-          impl_->notify_change(key, old_value, value);
-        } else {
-          ConfigItem item(key, value, type, false);
-          impl_->config_items_[key] = item;
-        }
-      }
-    }
-
-    return true;
-  } catch (const std::exception& e) {
-    WIRESTEAD_LOG_ERROR("config_manager", "load", "Error loading configuration: " + std::string(e.what()));
-    return false;
+  for (const auto& notification : pending_notifications) {
+    Impl::invoke_change_callback(notification.callback, notification.key, notification.old_value,
+                                 notification.new_value);
   }
+
+  return load_result;
 }
 
 std::vector<std::string> ConfigManager::get_keys() const {
