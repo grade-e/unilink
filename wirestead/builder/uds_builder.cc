@@ -69,10 +69,10 @@ std::unique_ptr<wrapper::UdsClient> UdsClientBuilder<State>::build() {
     client->framer(this->framer_factory_());
   }
   if (this->on_message_) {
-    client->on_message(std::move(this->on_message_));
+    client->on_message(this->on_message_);
   }
   if (this->on_message_batch_) {
-    client->on_message_batch(std::move(this->on_message_batch_));
+    client->on_message_batch(this->on_message_batch_);
   }
 
   if (auto_start_) {
@@ -164,10 +164,10 @@ std::unique_ptr<wrapper::UdsServer> UdsServerBuilder<State>::build() {
     server->framer(this->framer_factory_);
   }
   if (this->on_message_) {
-    server->on_message(std::move(this->on_message_));
+    server->on_message(this->on_message_);
   }
   if (this->on_message_batch_) {
-    server->on_message_batch(std::move(this->on_message_batch_));
+    server->on_message_batch(this->on_message_batch_);
   }
 
   if (auto_start_) {

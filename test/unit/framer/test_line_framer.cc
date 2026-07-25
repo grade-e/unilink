@@ -89,9 +89,19 @@ TEST_F(LineFramerTest, MaxLengthReset) {
 
   std::string data = "123456";  // No delimiter, exceeds max
   framer_->push_bytes(memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(data.data()), data.size()));
-  // Should have cleared buffer.
+  // Should have cleared the buffer and entered discard-until-delimiter mode.
 
-  // Now send valid message
+  // The bytes up to the next delimiter might be the untransmitted tail of
+  // the message that was just discarded, so they must not be delivered as a
+  // fresh, trusted message (jwsung91/wirestead review finding: emitting them
+  // would silently hand the caller corrupted/truncated data).
+  std::string maybe_tail_of_discarded_message = "Hi\n";
+  framer_->push_bytes(memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(maybe_tail_of_discarded_message.data()),
+                                            maybe_tail_of_discarded_message.size()));
+  EXPECT_EQ(messages_.size(), 0);
+
+  // Once resynchronized past that first post-overflow delimiter, normal
+  // delivery resumes for subsequent messages.
   std::string valid = "Hi\n";
   framer_->push_bytes(memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(valid.data()), valid.size()));
 
@@ -164,6 +174,37 @@ TEST_F(LineFramerTest, SplitDelimiter) {
   ASSERT_EQ(messages_.size(), 2);
   EXPECT_EQ(messages_[0], "Hello");
   EXPECT_EQ(messages_[1], "World");
+}
+
+TEST_F(LineFramerTest, OverflowTailIsNotDeliveredAsAMessage) {
+  // Max length 5. A 9-byte message split across two calls overflows on the
+  // first call (6 bytes, no delimiter yet); its last 3 bytes plus a
+  // delimiter arrive in the second call.
+  framer_ = std::make_unique<LineFramer>("\n", false, 5);
+  framer_->on_message([this](memory::ConstByteSpan msg) {
+    std::string s(reinterpret_cast<const char*>(msg.data()), msg.size());
+    messages_.push_back(s);
+  });
+
+  std::string overflow_head = "123456";  // No delimiter, exceeds max_length (5)
+  framer_->push_bytes(
+      memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(overflow_head.data()), overflow_head.size()));
+  ASSERT_EQ(messages_.size(), 0);
+
+  std::string overflow_tail = "789\n";  // The rest of the SAME discarded message
+  framer_->push_bytes(
+      memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(overflow_tail.data()), overflow_tail.size()));
+
+  // Before the fix, this would incorrectly deliver "789" as if it were a
+  // complete, valid message - it's actually a fragment of the 9-byte message
+  // that was already discarded for exceeding max_length.
+  EXPECT_EQ(messages_.size(), 0);
+
+  // A genuinely new message after resynchronization is delivered normally.
+  std::string next = "ok\n";
+  framer_->push_bytes(memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(next.data()), next.size()));
+  ASSERT_EQ(messages_.size(), 1);
+  EXPECT_EQ(messages_[0], "ok");
 }
 
 }  // namespace test

@@ -136,7 +136,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       data_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("tcp_client", "on_data_batch", handler, batch);
         lock.lock();
       }
     }
@@ -146,7 +146,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       message_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("tcp_client", "on_message_batch", handler, batch);
         lock.lock();
       }
     }
@@ -473,9 +473,9 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
-      } else if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("tcp_client", "on_data_batch", flush_handler, batch);
+      } else {
+        detail::invoke_user_callback("tcp_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -497,7 +497,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
           fulfill_all_locked(true);
           connect_handler = connect_handler_;
         }
-        if (connect_handler) connect_handler(ConnectionContext(0));
+        detail::invoke_user_callback("tcp_client", "on_connect", connect_handler, ConnectionContext(0));
       } else if (state == base::LinkState::Closed || state == base::LinkState::Error) {
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -509,11 +509,13 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
             channel_snapshot = channel_;
           }
         }
-        if (state == base::LinkState::Closed && disconnect_handler) {
-          disconnect_handler(ConnectionContext(0));
-        } else if (state == base::LinkState::Error && error_handler) {
-          error_handler(channel_snapshot ? detail::build_error_context(*channel_snapshot, "Connection error")
-                                         : ErrorContext(ErrorCode::IoError, "Connection error"));
+        if (state == base::LinkState::Closed) {
+          detail::invoke_user_callback("tcp_client", "on_disconnect", disconnect_handler, ConnectionContext(0));
+        } else if (state == base::LinkState::Error) {
+          detail::invoke_user_callback("tcp_client", "on_error", error_handler,
+                                       channel_snapshot
+                                           ? detail::build_error_context(*channel_snapshot, "Connection error")
+                                           : ErrorContext(ErrorCode::IoError, "Connection error"));
         }
       }
     });
@@ -529,7 +531,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         handler = bp_handler_;
       }
-      if (handler) handler(queued);
+      detail::invoke_user_callback("tcp_client", "on_backpressure", handler, queued);
     });
   }
 
@@ -561,13 +563,11 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
+        detail::invoke_user_callback("tcp_client", "on_message_batch", flush_handler, batch);
         return;
       }
 
-      if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(msg)));
-      }
+      detail::invoke_user_callback("tcp_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
     });
   }
 

@@ -173,7 +173,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
       data_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("tcp_server", "on_data_batch", handler, batch);
         lock.lock();
       }
     }
@@ -183,7 +183,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
       message_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("tcp_server", "on_message_batch", handler, batch);
         lock.lock();
       }
     }
@@ -443,20 +443,19 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
                       schedule_batch_timer();
                     }
                   }
-                  if (flush_handler) flush_handler(batch);
+                  detail::invoke_user_callback("tcp_server", "on_message_batch", flush_handler, batch);
                   return;
                 }
 
-                if (on_message_handler) {
-                  on_message_handler(MessageContext(id, memory::SafeDataBuffer(msg)));
-                }
+                detail::invoke_user_callback("tcp_server", "on_message", on_message_handler,
+                                             MessageContext(id, memory::SafeDataBuffer(msg)));
               });
               framers_[id] = std::move(shared_framer);
             }
           }
           handler = on_client_connect_;
         }
-        if (handler) handler(ConnectionContext(id, info));
+        detail::invoke_user_callback("tcp_server", "on_connect", handler, ConnectionContext(id, info));
       });
       transport_server->on_multi_data([this, weak_impl, weak_alive](ClientId id, memory::ConstByteSpan data_span) {
         auto impl_keepalive = weak_impl.lock();
@@ -504,9 +503,10 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
               schedule_batch_timer();
             }
           }
-          if (flush_handler) flush_handler(batch);
-        } else if (handler) {
-          handler(MessageContext(id, memory::SafeDataBuffer(data_span)));
+          detail::invoke_user_callback("tcp_server", "on_data_batch", flush_handler, batch);
+        } else {
+          detail::invoke_user_callback("tcp_server", "on_data", handler,
+                                       MessageContext(id, memory::SafeDataBuffer(data_span)));
         }
 
         if (framer) framer->push_bytes(data_span);
@@ -523,7 +523,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
           framers_.erase(id);
           handler = on_disconnect_;
         }
-        if (handler) handler(ConnectionContext(id));
+        detail::invoke_user_callback("tcp_server", "on_disconnect", handler, ConnectionContext(id));
       });
 
       transport_server->on_backpressure([this, weak_impl, weak_alive](size_t queued) {
@@ -537,7 +537,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
           std::shared_lock<std::shared_mutex> lock(mutex_);
           handler = on_backpressure_;
         }
-        if (handler) handler(queued);
+        detail::invoke_user_callback("tcp_server", "on_backpressure", handler, queued);
       });
     }
     channel_->on_state([this, weak_impl, weak_alive](base::LinkState state) {
@@ -561,10 +561,9 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
             handler = on_error_;
           }
         }
-        if (handler) {
-          handler(channel_ ? detail::build_error_context(*channel_, "Server error")
-                           : ErrorContext(ErrorCode::IoError, "Server error"));
-        }
+        detail::invoke_user_callback("tcp_server", "on_error", handler,
+                                     channel_ ? detail::build_error_context(*channel_, "Server error")
+                                              : ErrorContext(ErrorCode::IoError, "Server error"));
       }
     });
   }

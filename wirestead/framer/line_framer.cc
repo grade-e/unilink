@@ -71,8 +71,40 @@ void LineFramer::push_bytes(memory::ConstByteSpan data) {
   }
 }
 
+std::optional<size_t> LineFramer::skip_until_delimiter(memory::ConstByteSpan data) const {
+  decltype(data.begin()) it;
+  if (delimiter_.size() == 1) {
+    const void* found = std::memchr(data.data(), static_cast<uint8_t>(delimiter_[0]), data.size());
+    it = found ? data.begin() +
+                     std::distance(static_cast<const uint8_t*>(data.data()), static_cast<const uint8_t*>(found))
+               : data.end();
+  } else {
+    it = std::search(data.begin(), data.end(), delimiter_.begin(), delimiter_.end());
+  }
+  if (it == data.end()) {
+    return std::nullopt;
+  }
+  return static_cast<size_t>(std::distance(data.begin(), it)) + delimiter_.size();
+}
+
 void LineFramer::push_bytes_internal(memory::ConstByteSpan data) {
   if (data.empty()) return;
+
+  if (discarding_) {
+    // Resynchronizing after a discarded oversized message: don't buffer or
+    // emit anything from this chunk until the delimiter that ends the
+    // discarded message is found. A delimiter split across two discard-mode
+    // chunks is missed (we don't carry a partial match across calls here),
+    // which only delays resync by one more chunk - it doesn't misdeliver
+    // data.
+    std::optional<size_t> consumed = skip_until_delimiter(data);
+    if (!consumed.has_value()) {
+      return;  // Still haven't found it; stay in discarding mode.
+    }
+    discarding_ = false;
+    data = data.subspan(*consumed, data.size() - *consumed);
+    if (data.empty()) return;
+  }
 
   // Fast Path: If buffer is empty, process data directly (zero-copy)
   if (buffer_.empty()) {
@@ -87,6 +119,7 @@ void LineFramer::push_bytes_internal(memory::ConstByteSpan data) {
       if (buffer_.size() > max_length_) {
         buffer_.clear();
         scanned_idx_ = 0;
+        discarding_ = true;
       }
     } else {
       // All processed, buffer remains empty
@@ -123,6 +156,7 @@ void LineFramer::push_bytes_internal(memory::ConstByteSpan data) {
   if (buffer_.size() > max_length_) {
     buffer_.clear();
     scanned_idx_ = 0;
+    discarding_ = true;
   }
 }
 
@@ -198,6 +232,7 @@ void LineFramer::on_message(MessageCallback cb) { on_message_ = std::move(cb); }
 void LineFramer::reset() {
   buffer_.clear();
   scanned_idx_ = 0;
+  discarding_ = false;
 }
 
 }  // namespace framer

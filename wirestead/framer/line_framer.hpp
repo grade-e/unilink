@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -57,6 +58,13 @@ class WIRESTEAD_API LineFramer : public IFramer {
   std::vector<uint8_t> buffer_;
   MessageCallback on_message_;
 
+  // Set when an in-progress message exceeded max_length_ and buffer_ was
+  // discarded before a delimiter was found. While true, push_bytes_internal
+  // discards incoming bytes (instead of buffering them) until it finds a
+  // delimiter, so the untransmitted tail of the discarded message can't be
+  // mistaken for the start of a fresh, valid message.
+  bool discarding_ = false;
+
   /**
    * @brief Helper to scan data for delimiters and process messages.
    *
@@ -65,6 +73,15 @@ class WIRESTEAD_API LineFramer : public IFramer {
    * @return The number of bytes processed (emitted as messages).
    */
   size_t scan_and_process(memory::ConstByteSpan data, size_t search_start_offset);
+
+  /**
+   * @brief Find the end of the next delimiter in data, if any.
+   *
+   * @param data The data to scan (searched from the beginning).
+   * @return The number of bytes up to and including the delimiter, or
+   *         std::nullopt if no delimiter was found in data.
+   */
+  std::optional<size_t> skip_until_delimiter(memory::ConstByteSpan data) const;
 
   /**
    * @brief Internal helper to process a manageable chunk of data.

@@ -256,5 +256,32 @@ TEST_F(PacketFramerTest, ResetClearsState) {
   EXPECT_EQ(count, 0);
 }
 
+TEST_F(PacketFramerTest, FastPathOverflowDoesNotSwallowNextValidMessage) {
+  // Max length 4. A single push_bytes() call with a start marker and no end
+  // marker within that same call takes the fast path (buffer_ starts
+  // empty); the max_length_ check must apply immediately there, not only on
+  // a later call.
+  PacketFramer framer({'S'}, {'E'}, 4);
+  std::vector<std::vector<uint8_t>> messages;
+  framer.on_message([&](memory::ConstByteSpan data) { messages.emplace_back(data.begin(), data.end()); });
+
+  // 'S' + 5 bytes of unterminated garbage, 6 bytes total, exceeds
+  // max_length(4), all within one push_bytes() call.
+  std::vector<uint8_t> overflow = {'S', 'x', 'x', 'x', 'x', 'x'};
+  framer.push_bytes(memory::ConstByteSpan(overflow.data(), overflow.size()));
+  ASSERT_EQ(messages.size(), 0);
+
+  // A genuinely new, complete, well-within-max_length message.
+  std::vector<uint8_t> valid = {'S', 'a', 'E'};
+  framer.push_bytes(memory::ConstByteSpan(valid.data(), valid.size()));
+
+  // Before the fix, the overflow from the first call was never cleared
+  // until this second call's Collect-loop check ran - by which point this
+  // message's own 'S'/'E' had already been merged into (and discarded
+  // along with) the stale oversized buffer, silently dropping it.
+  ASSERT_EQ(messages.size(), 1);
+  EXPECT_EQ(messages[0], valid);
+}
+
 }  // namespace test
 }  // namespace wirestead

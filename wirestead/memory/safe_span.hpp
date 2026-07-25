@@ -49,17 +49,32 @@ class SafeSpan : public std::span<T, Extent> {
     return (*this)[index];
   }
 
-  // Override subspan to return SafeSpan instead of std::span
+  // Override subspan to return SafeSpan instead of std::span, and to check
+  // bounds - std::span::subspan()'s out-of-range offset/count is undefined
+  // behavior, which would otherwise be the only unchecked accessor left in a
+  // class named "Safe" (at() is already checked above).
   constexpr SafeSpan<T, std::dynamic_extent> subspan(std::size_t offset,
                                                      std::size_t count = std::dynamic_extent) const {
+    if (offset > this->size()) {
+      throw std::out_of_range("SafeSpan::subspan: offset out of range");
+    }
+    if (count != std::dynamic_extent && count > this->size() - offset) {
+      throw std::out_of_range("SafeSpan::subspan: count out of range");
+    }
     return SafeSpan<T, std::dynamic_extent>(Base::subspan(offset, count));
   }
 
   constexpr SafeSpan<T, std::dynamic_extent> first(std::size_t count) const {
+    if (count > this->size()) {
+      throw std::out_of_range("SafeSpan::first: count out of range");
+    }
     return SafeSpan<T, std::dynamic_extent>(Base::first(count));
   }
 
   constexpr SafeSpan<T, std::dynamic_extent> last(std::size_t count) const {
+    if (count > this->size()) {
+      throw std::out_of_range("SafeSpan::last: count out of range");
+    }
     return SafeSpan<T, std::dynamic_extent>(Base::last(count));
   }
 };

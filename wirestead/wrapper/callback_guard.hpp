@@ -16,6 +16,12 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "wirestead/diagnostics/logger.hpp"
+
 // #449: a blocking send (Reliable-mode send()/send_blocking()/send_move()/
 // send_shared()) called from inside a data/message callback deadlocks -
 // clearing backpressure requires progress on the same io thread that a
@@ -30,17 +36,44 @@ namespace wirestead {
 namespace wrapper {
 namespace detail {
 
-inline thread_local bool g_in_data_callback = false;
+// A depth counter rather than a bool so that a nested/reentrant
+// CallbackGuard on the same thread doesn't clear the flag out from under an
+// outer guard that's still in scope: the inner guard's destructor would
+// otherwise flip g_callback_depth back to "not in a callback" while the
+// outer dispatch is still running, reopening the #449 deadlock this guard
+// exists to prevent.
+inline thread_local int g_callback_depth = 0;
 
 class CallbackGuard {
  public:
-  CallbackGuard() { g_in_data_callback = true; }
-  ~CallbackGuard() { g_in_data_callback = false; }
+  CallbackGuard() { ++g_callback_depth; }
+  ~CallbackGuard() { --g_callback_depth; }
   CallbackGuard(const CallbackGuard&) = delete;
   CallbackGuard& operator=(const CallbackGuard&) = delete;
 };
 
-inline bool in_data_callback() { return g_in_data_callback; }
+inline bool in_data_callback() { return g_callback_depth > 0; }
+
+// Invokes a user-supplied wrapper callback (on_data/on_message/on_connect/
+// on_disconnect/on_error/on_backpressure and their batch variants) and
+// prevents an exception escaping it from propagating further. All channels
+// share one process-wide IoContextManager thread by default
+// (concurrency/io_context_manager.cc); an uncaught exception here would
+// otherwise escape the un-guarded handler call, propagate out of
+// io_context::run(), and stop I/O for every channel sharing that context -
+// not just the one whose callback misbehaved.
+template <typename Callback, typename... Args>
+void invoke_user_callback(std::string_view component, std::string_view operation, const Callback& callback,
+                          Args&&... args) {
+  if (!callback) return;
+  try {
+    callback(std::forward<Args>(args)...);
+  } catch (const std::exception& e) {
+    WIRESTEAD_LOG_ERROR(component, operation, "Uncaught exception in user callback: " + std::string(e.what()));
+  } catch (...) {
+    WIRESTEAD_LOG_ERROR(component, operation, "Uncaught non-standard exception in user callback");
+  }
+}
 
 }  // namespace detail
 }  // namespace wrapper
