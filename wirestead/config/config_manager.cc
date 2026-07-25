@@ -355,7 +355,10 @@ bool ConfigManager::load_from_file(const std::string& filepath) {
       WIRESTEAD_LOG_ERROR("config_manager", "load", "Error loading configuration: " + std::string(e.what()));
       return false;
     }
-  }();
+  }();  // load_result: whether the file was read and parsed successfully.
+        // pending_notifications (collected above, outside this lambda) is
+        // drained into callback invocations next, now that mutex_ is
+        // released.
 
   for (const auto& notification : pending_notifications) {
     Impl::invoke_change_callback(notification.callback, notification.key, notification.old_value,
