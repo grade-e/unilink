@@ -1237,6 +1237,16 @@ void TcpClient::Impl::join_ioc_thread(bool allow_detach) {
     return;
   }
 
+  // stop() posts perform_stop_cleanup() (which resets work_guard_) only when
+  // weak_from_this().lock() succeeds. During ~TcpClient(), the shared_ptr use
+  // count is already 0, so that lock() is guaranteed null and the cleanup is
+  // never posted. request_stop() is the unconditional fallback that still
+  // guarantees io_context::run() returns: it fires the stop_callback
+  // registered in start() below, which calls ioc->stop() directly. Mirrors
+  // TcpServer::Impl's destructor/stop() (tcp_server.cc), which already does
+  // this before joining.
+  ioc_thread_.request_stop();
+
   try {
     ioc_thread_.join();
   } catch (const std::exception& e) {
