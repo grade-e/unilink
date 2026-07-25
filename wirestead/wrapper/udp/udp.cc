@@ -120,7 +120,7 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
       data_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("udp_client", "on_data_batch", handler, batch);
         lock.lock();
       }
     }
@@ -130,7 +130,7 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
       message_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("udp_client", "on_message_batch", handler, batch);
         lock.lock();
       }
     }
@@ -436,9 +436,9 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
-      } else if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("udp_client", "on_data_batch", flush_handler, batch);
+      } else {
+        detail::invoke_user_callback("udp_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -455,7 +455,7 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         handler = bp_handler;
       }
-      if (handler) handler(queued);
+      detail::invoke_user_callback("udp_client", "on_backpressure", handler, queued);
     });
 
     channel->on_state([this, weak_impl, weak_alive](base::LinkState state) {
@@ -473,7 +473,7 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
             fulfill_all_locked(true);
             handler = connect_handler;
           }
-          if (handler) handler(ConnectionContext(0));
+          detail::invoke_user_callback("udp_client", "on_connect", handler, ConnectionContext(0));
           break;
         }
         case base::LinkState::Closed:
@@ -490,12 +490,10 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
               disconnect_handler_snapshot = disconnect_handler;
             }
           }
-          if (disconnect_handler_snapshot) {
-            disconnect_handler_snapshot(ConnectionContext(0));
-          }
-          if (error_handler_snapshot) {
-            error_handler_snapshot(detail::build_error_context(*channel, "Connection error"));
-          }
+          detail::invoke_user_callback("udp_client", "on_disconnect", disconnect_handler_snapshot,
+                                       ConnectionContext(0));
+          detail::invoke_user_callback("udp_client", "on_error", error_handler_snapshot,
+                                       detail::build_error_context(*channel, "Connection error"));
           break;
         }
         default:
@@ -532,13 +530,11 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
+        detail::invoke_user_callback("udp_client", "on_message_batch", flush_handler, batch);
         return;
       }
 
-      if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(msg)));
-      }
+      detail::invoke_user_callback("udp_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
     });
   }
 

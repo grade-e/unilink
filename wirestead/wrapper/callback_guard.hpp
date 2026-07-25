@@ -16,6 +16,12 @@
 
 #pragma once
 
+#include <string>
+#include <string_view>
+#include <utility>
+
+#include "wirestead/diagnostics/logger.hpp"
+
 // #449: a blocking send (Reliable-mode send()/send_blocking()/send_move()/
 // send_shared()) called from inside a data/message callback deadlocks -
 // clearing backpressure requires progress on the same io thread that a
@@ -47,6 +53,27 @@ class CallbackGuard {
 };
 
 inline bool in_data_callback() { return g_callback_depth > 0; }
+
+// Invokes a user-supplied wrapper callback (on_data/on_message/on_connect/
+// on_disconnect/on_error/on_backpressure and their batch variants) and
+// prevents an exception escaping it from propagating further. All channels
+// share one process-wide IoContextManager thread by default
+// (concurrency/io_context_manager.cc); an uncaught exception here would
+// otherwise escape the un-guarded handler call, propagate out of
+// io_context::run(), and stop I/O for every channel sharing that context -
+// not just the one whose callback misbehaved.
+template <typename Callback, typename... Args>
+void invoke_user_callback(std::string_view component, std::string_view operation, const Callback& callback,
+                          Args&&... args) {
+  if (!callback) return;
+  try {
+    callback(std::forward<Args>(args)...);
+  } catch (const std::exception& e) {
+    WIRESTEAD_LOG_ERROR(component, operation, "Uncaught exception in user callback: " + std::string(e.what()));
+  } catch (...) {
+    WIRESTEAD_LOG_ERROR(component, operation, "Uncaught non-standard exception in user callback");
+  }
+}
 
 }  // namespace detail
 }  // namespace wrapper

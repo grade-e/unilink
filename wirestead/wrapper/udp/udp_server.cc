@@ -148,7 +148,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
       data_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("udp_server", "on_data_batch", handler, batch);
         lock.lock();
       }
     }
@@ -158,7 +158,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
       message_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("udp_server", "on_message_batch", handler, batch);
         lock.lock();
       }
     }
@@ -229,10 +229,8 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
     }
 
     // Call disconnect handlers outside the lock
-    if (disconnect_handler) {
-      for (auto const& [id, info] : to_remove_with_info) {
-        disconnect_handler(ConnectionContext(id, info));
-      }
+    for (auto const& [id, info] : to_remove_with_info) {
+      detail::invoke_user_callback("udp_server", "on_disconnect", disconnect_handler, ConnectionContext(id, info));
     }
   }
 
@@ -303,13 +301,12 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
                       schedule_batch_timer();
                     }
                   }
-                  if (flush_handler) flush_handler(batch);
+                  detail::invoke_user_callback("udp_server", "on_message_batch", flush_handler, batch);
                   return;
                 }
 
-                if (on_message_handler) {
-                  on_message_handler(MessageContext(client_id, memory::SafeDataBuffer(msg)));
-                }
+                detail::invoke_user_callback("udp_server", "on_message", on_message_handler,
+                                             MessageContext(client_id, memory::SafeDataBuffer(msg)));
               });
               entry.framer = std::move(framer);
             }
@@ -322,8 +319,10 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
         connect_handler_copy = on_connect;
       }
 
-      if (is_new && connect_handler_copy) {
-        connect_handler_copy(ConnectionContext(client_id, fmt::format("{}:{}", ep.address().to_string(), ep.port())));
+      if (is_new) {
+        detail::invoke_user_callback(
+            "udp_server", "on_connect", connect_handler_copy,
+            ConnectionContext(client_id, fmt::format("{}:{}", ep.address().to_string(), ep.port())));
       }
 
       {
@@ -356,9 +355,10 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
               schedule_batch_timer();
             }
           }
-          if (flush_handler) flush_handler(batch);
-        } else if (data_handler_copy) {
-          data_handler_copy(MessageContext(client_id, memory::SafeDataBuffer(data)));
+          detail::invoke_user_callback("udp_server", "on_data_batch", flush_handler, batch);
+        } else {
+          detail::invoke_user_callback("udp_server", "on_data", data_handler_copy,
+                                       MessageContext(client_id, memory::SafeDataBuffer(data)));
         }
       }
 
@@ -385,7 +385,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
         std::shared_lock<std::shared_mutex> lock(mutex);
         handler = bp_handler;
       }
-      if (handler) handler(queued);
+      detail::invoke_user_callback("udp_server", "on_backpressure", handler, queued);
     });
 
     channel->on_state([this, weak_impl](base::LinkState state) {
@@ -406,10 +406,9 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
         }
       }
 
-      if (error_handler_copy) {
-        error_handler_copy(channel ? detail::build_error_context(*channel, "Server error")
-                                   : ErrorContext(ErrorCode::IoError, "Server error"));
-      }
+      detail::invoke_user_callback("udp_server", "on_error", error_handler_copy,
+                                   channel ? detail::build_error_context(*channel, "Server error")
+                                           : ErrorContext(ErrorCode::IoError, "Server error"));
     });
   }
 

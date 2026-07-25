@@ -129,7 +129,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       data_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("uds_client", "on_data_batch", handler, batch);
         lock.lock();
       }
     }
@@ -139,7 +139,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       message_batch_queue_.clear();
       if (handler) {
         lock.unlock();
-        handler(batch);
+        detail::invoke_user_callback("uds_client", "on_message_batch", handler, batch);
         lock.lock();
       }
     }
@@ -416,9 +416,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
           fulfill_all_locked(true);
           handler = connect_handler_;
         }
-        if (handler) {
-          handler(ConnectionContext(0));
-        }
+        detail::invoke_user_callback("uds_client", "on_connect", handler, ConnectionContext(0));
       } else if (state == base::LinkState::Error) {
         ErrorHandler handler;
         std::shared_ptr<interface::Channel> channel_snapshot;
@@ -428,10 +426,10 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
           handler = error_handler_;
           channel_snapshot = channel_;
         }
-        if (handler) {
-          handler(channel_snapshot ? detail::build_error_context(*channel_snapshot, "Connection error")
-                                   : ErrorContext(ErrorCode::IoError, "Connection error"));
-        }
+        detail::invoke_user_callback("uds_client", "on_error", handler,
+                                     channel_snapshot
+                                         ? detail::build_error_context(*channel_snapshot, "Connection error")
+                                         : ErrorContext(ErrorCode::IoError, "Connection error"));
       } else if (state == base::LinkState::Closed || state == base::LinkState::Idle) {
         ConnectionHandler handler;
         {
@@ -439,9 +437,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
           fulfill_all_locked(false);
           handler = disconnect_handler_;
         }
-        if (handler) {
-          handler(ConnectionContext(0));
-        }
+        detail::invoke_user_callback("uds_client", "on_disconnect", handler, ConnectionContext(0));
       }
     });
 
@@ -487,9 +483,9 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
-      } else if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("uds_client", "on_data_batch", flush_handler, batch);
+      } else {
+        detail::invoke_user_callback("uds_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -506,7 +502,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         handler = bp_handler_;
       }
-      if (handler) handler(queued);
+      detail::invoke_user_callback("uds_client", "on_backpressure", handler, queued);
     });
   }
 
@@ -540,13 +536,11 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
             schedule_batch_timer();
           }
         }
-        if (flush_handler) flush_handler(batch);
+        detail::invoke_user_callback("uds_client", "on_message_batch", flush_handler, batch);
         return;
       }
 
-      if (handler) {
-        handler(MessageContext(0, memory::SafeDataBuffer(msg)));
-      }
+      detail::invoke_user_callback("uds_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
     });
   }
 
