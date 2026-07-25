@@ -18,6 +18,8 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+  release:
+    types: [published]
 
 jobs:
   coverage:
@@ -196,192 +198,23 @@ jobs:
             echo "✅ Coverage ${COVERAGE}% meets threshold ${THRESHOLD}%"
           fi
 
-  deploy-coverage:
-    name: Deploy Coverage to GitHub Pages
+  notify-docs:
+    name: Notify wirestead-docs of release
     needs: coverage
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'release'
     runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download coverage report
-        uses: actions/download-artifact@v8
-        with:
-          name: coverage-report
-          path: ./build-coverage/coverage_html
-      - name: Download coverage data
-        uses: actions/download-artifact@v8
-        with:
-          name: coverage-data
-          path: ./build-coverage
-      - name: Generate coverage badge JSON
-        id: coverage_badge
+      # wirestead-docs owns the combined API-reference + coverage Pages site
+      # now (actions/deploy-pages can only publish to the repo the workflow
+      # runs in, so this repo no longer builds or deploys anything - it just
+      # runs its own tests/coverage and wakes wirestead-docs up on release).
+      # No payload is sent: wirestead-docs resolves the latest published
+      # release and this run's coverage-report artifact itself, so it stays
+      # correct even on a re-run.
+      - name: Notify wirestead-docs
         run: |
-          cd build-coverage
-          set -euo pipefail
-
-          # Prefer the value computed in the coverage job; fall back to the artifact files if missing
-          COVERAGE_PERCENT="${{ needs.coverage.outputs.coverage_percent }}"
-          if [ -z "$COVERAGE_PERCENT" ]; then
-            SUMMARY_FILE=$(find . -name "coverage_summary.txt" | head -n 1 || true)
-            if [ -n "$SUMMARY_FILE" ]; then
-              COVERAGE_PERCENT=$(grep -m1 "lines" "$SUMMARY_FILE" | awk '{print $2}' | tr -d '%') || true
-            fi
-          fi
-          if [ -z "$COVERAGE_PERCENT" ]; then
-            echo "⚠️  coverage_percent was empty, defaulting to 0" >&2
-            COVERAGE_PERCENT="0"
-          fi
-          export COVERAGE_PERCENT
-
-          cov_formatted=$(awk -v v="$COVERAGE_PERCENT" 'BEGIN{printf "%.1f", v+0}')
-
-          color="red"
-          grade="poor"
-          if awk -v v="$COVERAGE_PERCENT" 'BEGIN{exit !(v>=80)}'; then
-            color="blue"
-            grade="excellent"
-          elif awk -v v="$COVERAGE_PERCENT" 'BEGIN{exit !(v>=60)}'; then
-            color="green"
-            grade="good"
-          elif awk -v v="$COVERAGE_PERCENT" 'BEGIN{exit !(v>=40)}'; then
-            color="yellow"
-            grade="fair"
-          fi
-
-          mkdir -p coverage_html/badges
-          cat > coverage_html/badges/coverage.json << EOF
-          {
-            "schemaVersion": 1,
-            "label": "test coverage",
-            "message": "${cov_formatted}%",
-            "color": "${color}"
-          }
-          EOF
-
-          {
-            echo "coverage_percent=${cov_formatted}"
-            echo "coverage_grade=${grade}"
-            echo "coverage_color=${color}"
-          } >> "$GITHUB_OUTPUT"
-
-          echo "✅ Coverage badge JSON created: ${cov_formatted}% (${grade}, ${color})"
-
-      - name: Create index page
-        run: |
-          cd build-coverage/coverage_html
-          COVERAGE="${{ steps.coverage_badge.outputs.coverage_percent }}%"
-          GRADE="${{ steps.coverage_badge.outputs.coverage_grade }}"
-          if [ -f index.html ]; then
-            mv index.html index-original.html
-          fi
-          cat > index.html << EOF
-          <!DOCTYPE html>
-          <html>
-          <head>
-            <meta charset="UTF-8">
-            <title>Wirestead Coverage Report</title>
-            <style>
-              body {
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                margin: 0;
-                padding: 20px;
-                background: #f5f5f5;
-              }
-              .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                background: white;
-                padding: 40px;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-              }
-              h1 { color: #333; margin-bottom: 10px; }
-              .coverage { font-size: 48px; font-weight: bold; color: #4CAF50; margin: 20px 0; }
-              .grade { font-size: 24px; color: #666; margin: 10px 0; text-transform: uppercase; }
-              .badge { margin: 20px 0; }
-              .links { margin-top: 30px; }
-              .link { 
-                display: inline-block;
-                padding: 12px 24px;
-                background: #2196F3;
-                color: white;
-                text-decoration: none;
-                border-radius: 4px;
-                margin-right: 10px;
-              }
-              .link:hover { background: #1976D2; }
-              .timestamp { color: #666; font-size: 14px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <h1>🎯 Wirestead Code Coverage</h1>
-              <p class="timestamp">Generated: $(date '+%Y-%m-%d %H:%M:%S UTC')</p>
-              <div class="coverage">Coverage: ${COVERAGE}</div>
-              <div class="grade">Grade: ${GRADE}</div>
-              <div class="badge">
-                <img src="https://img.shields.io/endpoint?url=https://wirestead.github.io/wirestead/coverage/badges/coverage.json" alt="Coverage Badge">
-              </div>
-              <div class="links">
-                <a href="index-original.html" class="link">📊 Detailed Report</a>
-                <a href="https://github.com/wirestead/wirestead" class="link">📦 Repository</a>
-              </div>
-            </div>
-          </body>
-          </html>
-          EOF
-          echo "✅ Custom index page created with coverage: ${COVERAGE}"
-
-      # API docs (Doxygen) live in the separate wirestead/wirestead-docs
-      # repository, since docs generation moved out of this one. GitHub's
-      # native actions/deploy-pages can only publish to the Pages site of the
-      # repo the workflow is running in, so wirestead-docs can't deploy here
-      # itself (no supported cross-repo path) - this job checks wirestead-docs
-      # out as a source dependency instead and generates docs from *this*
-      # exact commit, then combines them with the coverage report into one
-      # artifact before the single deploy-pages call below.
-      - name: Checkout docs source
-        uses: actions/checkout@v7
-        with:
-          repository: wirestead/wirestead-docs
-          path: docs-src
-
-      - name: Checkout Wirestead core for docs generation
-        uses: actions/checkout@v7
-        with:
-          path: docs-src/external/wirestead
-
-      - name: Install Doxygen
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y doxygen graphviz
-
-      - name: Generate API reference
-        working-directory: docs-src
-        run: ./scripts/generate_docs.sh
-
-      - name: Assemble Pages site
-        run: |
-          set -euo pipefail
-          mkdir -p site
-          cp -r docs-src/build/doxygen/html/. site/
-          mkdir -p site/coverage
-          cp -r build-coverage/coverage_html/. site/coverage/
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${{ secrets.WIRESTEAD_DOCS_DISPATCH_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/wirestead/wirestead-docs/dispatches \
+            -d '{"event_type":"core-released"}'

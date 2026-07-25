@@ -11,7 +11,7 @@ Serial · TCP · UDP · UDS
 
 ![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows%20%7C%20macOS-informational)
 ![vcpkg](https://img.shields.io/badge/vcpkg-wirestead-0078D6)
-[![Coverage](https://img.shields.io/endpoint?url=https://wirestead.github.io/wirestead/coverage/badges/coverage.json)](https://wirestead.github.io/wirestead/coverage/)
+[![Coverage](https://img.shields.io/endpoint?url=https://wirestead.github.io/wirestead-docs/coverage/badges/coverage.json)](https://wirestead.github.io/wirestead-docs/coverage/)
 
 ## Description
 
