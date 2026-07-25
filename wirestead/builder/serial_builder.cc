@@ -96,10 +96,10 @@ std::unique_ptr<wrapper::Serial> SerialBuilder<State>::build() {
     serial->framer(this->framer_factory_());
   }
   if (this->on_message_) {
-    serial->on_message(std::move(this->on_message_));
+    serial->on_message(this->on_message_);
   }
   if (this->on_message_batch_) {
-    serial->on_message_batch(std::move(this->on_message_batch_));
+    serial->on_message_batch(this->on_message_batch_);
   }
 
   if (auto_start_) {
