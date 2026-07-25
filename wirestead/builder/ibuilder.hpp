@@ -84,8 +84,14 @@ class BuilderInterface {
   /**
    * @brief Set data handler callback
    */
+  // Note: this returns a new, moved-to builder value rather than mutating in
+  // place (see BuilderState's doc comment above) - the original object is
+  // left moved-from. [[nodiscard]] turns an accidental
+  // `builder.on_data(...);` statement that ignores the result (which would
+  // silently leave `builder` moved-from) into a compile-time warning instead
+  // of a runtime footgun.
   template <DataHandler F>
-  auto on_data(F&& handler) {
+  [[nodiscard]] auto on_data(F&& handler) {
     on_data_ = std::forward<F>(handler);
     return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
   }
@@ -94,7 +100,7 @@ class BuilderInterface {
    * @brief Set batched data handler callback
    */
   template <BatchDataHandler F>
-  auto on_data_batch(F&& handler) {
+  [[nodiscard]] auto on_data_batch(F&& handler) {
     on_data_batch_ = std::forward<F>(handler);
     return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
   }
@@ -103,7 +109,7 @@ class BuilderInterface {
    * @brief Set data handler callback using member function pointer
    */
   template <typename U, typename F>
-  auto on_data(U* obj, F method) {
+  [[nodiscard]] auto on_data(U* obj, F method) {
     return on_data([obj, method](const wrapper::MessageContext& ctx) { (obj->*method)(ctx); });
   }
 
@@ -145,7 +151,7 @@ class BuilderInterface {
    * @brief Set error handler callback
    */
   template <ErrorHandler F>
-  auto on_error(F&& handler) {
+  [[nodiscard]] auto on_error(F&& handler) {
     on_error_ = std::forward<F>(handler);
     return typename Derived::template Rebind<State | BuilderState::HasError>(std::move(static_cast<Derived&>(*this)));
   }
@@ -154,7 +160,7 @@ class BuilderInterface {
    * @brief Set error handler callback using member function pointer
    */
   template <typename U, typename F>
-  auto on_error(U* obj, F method) {
+  [[nodiscard]] auto on_error(U* obj, F method) {
     return on_error([obj, method](const wrapper::ErrorContext& ctx) { (obj->*method)(ctx); });
   }
 
@@ -195,7 +201,7 @@ class BuilderInterface {
    * @brief Set message handler callback
    */
   template <DataHandler F>
-  auto on_message(F&& handler) {
+  [[nodiscard]] auto on_message(F&& handler) {
     on_message_ = std::forward<F>(handler);
     return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
   }
@@ -204,7 +210,7 @@ class BuilderInterface {
    * @brief Set batched framed-message handler callback
    */
   template <BatchDataHandler F>
-  auto on_message_batch(F&& handler) {
+  [[nodiscard]] auto on_message_batch(F&& handler) {
     on_message_batch_ = std::forward<F>(handler);
     return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
   }
@@ -221,7 +227,7 @@ class BuilderInterface {
    * @brief Set message handler callback using member function pointer
    */
   template <typename U, typename F>
-  auto on_message(U* obj, F method) {
+  [[nodiscard]] auto on_message(U* obj, F method) {
     return on_message([obj, method](const wrapper::MessageContext& ctx) { (obj->*method)(ctx); });
   }
 
