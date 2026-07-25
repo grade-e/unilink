@@ -277,7 +277,15 @@ bool ThreadSafeState<StateType>::is_state(const State& expected_state) const {
 
 template <typename StateType>
 void ThreadSafeState<StateType>::notify_state_change() {
-  state_version_.fetch_add(1, std::memory_order_relaxed);
+  // Bump under state_mutex_ - wait_for_state_change() captures its baseline
+  // and enters the wait while holding this same lock, so incrementing
+  // without it would reopen a lost-wakeup window: a waiter that has already
+  // checked the predicate (and found it false) but hasn't yet started
+  // waiting would miss this notification and block for the full timeout.
+  {
+    std::unique_lock<std::shared_mutex> lock(state_mutex_);
+    state_version_.fetch_add(1, std::memory_order_relaxed);
+  }
   state_cv_.notify_all();
 }
 
