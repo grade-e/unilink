@@ -127,6 +127,17 @@ void PacketFramer::push_bytes(memory::ConstByteSpan data) {
           }
         }
       }
+
+      // The end pattern wasn't found within this call. Apply the same
+      // max_length_ cap the Collect-state loop below applies on later calls -
+      // otherwise a single push_bytes() call with a start marker and a large
+      // unterminated payload could grow buffer_ past the documented limit
+      // before any call gets a chance to check it.
+      if (state_ == State::Collect && buffer_.size() > max_length_) {
+        buffer_.clear();
+        state_ = State::Sync;
+        scanned_idx_ = 0;
+      }
     }
     return;
   }
