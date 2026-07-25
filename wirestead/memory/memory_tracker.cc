@@ -82,7 +82,10 @@ void MemoryTracker::track_deallocation(void* ptr) {
   }
 }
 
-MemoryTracker::MemoryStats MemoryTracker::stats() const { return stats_; }
+MemoryTracker::MemoryStats MemoryTracker::stats() const {
+  std::lock_guard<std::mutex> lock(allocations_mutex_);
+  return stats_;
+}
 
 std::vector<MemoryTracker::AllocationInfo> MemoryTracker::current_allocations() const {
   std::lock_guard<std::mutex> lock(allocations_mutex_);
