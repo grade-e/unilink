@@ -76,7 +76,12 @@ class ThreadSafeState {
  private:
   mutable std::shared_mutex state_mutex_;
   State state_;
-  std::atomic<bool> state_changed_{false};
+  // Monotonically increasing on every state change. wait_for_state_change()
+  // captures this before waiting and checks for it to differ from that
+  // baseline, so every concurrent waiter observes any given change - a
+  // shared "changed" bool that gets reset by whichever waiter wakes first
+  // would starve the others.
+  std::atomic<uint64_t> state_version_{0};
 
   struct CallbackInfo {
     StateCallbackHandle handle;
@@ -181,7 +186,7 @@ void ThreadSafeState<StateType>::set_state(const State& new_state) {
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     state_ = new_state;
-    state_changed_.store(true);
+    state_version_.fetch_add(1, std::memory_order_relaxed);
   }
   notify_callbacks(new_state);
   state_cv_.notify_all();
@@ -192,7 +197,7 @@ void ThreadSafeState<StateType>::set_state(State&& new_state) {
   {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     state_ = std::move(new_state);
-    state_changed_.store(true);
+    state_version_.fetch_add(1, std::memory_order_relaxed);
   }
   notify_callbacks(state_);
   state_cv_.notify_all();
@@ -203,7 +208,7 @@ bool ThreadSafeState<StateType>::compare_and_set(const State& expected, const St
   std::unique_lock<std::shared_mutex> lock(state_mutex_);
   if (state_ == expected) {
     state_ = desired;
-    state_changed_.store(true);
+    state_version_.fetch_add(1, std::memory_order_relaxed);
     lock.unlock();
     notify_callbacks(desired);
     state_cv_.notify_all();
@@ -219,7 +224,7 @@ StateType ThreadSafeState<StateType>::exchange(const State& new_state) {
     std::unique_lock<std::shared_mutex> lock(state_mutex_);
     old_state = state_;
     state_ = new_state;
-    state_changed_.store(true);
+    state_version_.fetch_add(1, std::memory_order_relaxed);
   }
   notify_callbacks(new_state);
   state_cv_.notify_all();
@@ -258,8 +263,10 @@ void ThreadSafeState<StateType>::wait_for_state(const State& expected_state, std
 template <typename StateType>
 void ThreadSafeState<StateType>::wait_for_state_change(std::chrono::milliseconds timeout) {
   std::unique_lock<std::shared_mutex> lock(state_mutex_);
-  state_cv_.wait_for(lock, timeout, [this] { return state_changed_.load(); });
-  state_changed_.store(false);
+  const uint64_t observed_version = state_version_.load(std::memory_order_relaxed);
+  state_cv_.wait_for(lock, timeout, [this, observed_version] {
+    return state_version_.load(std::memory_order_relaxed) != observed_version;
+  });
 }
 
 template <typename StateType>
@@ -270,6 +277,7 @@ bool ThreadSafeState<StateType>::is_state(const State& expected_state) const {
 
 template <typename StateType>
 void ThreadSafeState<StateType>::notify_state_change() {
+  state_version_.fetch_add(1, std::memory_order_relaxed);
   state_cv_.notify_all();
 }
 
