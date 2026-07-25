@@ -296,14 +296,21 @@ void TcpClient::stop() {
 
   impl_->stopping_.store(true);
   impl_->stop_seq_.store(impl_->current_seq_.load());
-  auto weak_self = weak_from_this();
   if (!impl_->ioc_) {
     return;
   }
 
-  if (auto self = weak_self.lock()) {
-    net::post(impl_->strand_, [self]() { self->impl_->perform_stop_cleanup(); });
-  }
+  // Post via a raw Impl* rather than weak_from_this().lock(): when stop()
+  // runs from ~TcpClient(), the shared_ptr use count is already 0, so that
+  // lock() is guaranteed null (standard shared_ptr/enable_shared_from_this
+  // behavior during destruction) and perform_stop_cleanup() - which resets
+  // work_guard_ - would never be posted, leaving join_ioc_thread() below
+  // blocked forever with no work_guard reset to let io_context::run()
+  // return. impl_ itself stays alive until after join_ioc_thread() returns
+  // (~TcpClient() doesn't destroy it until its body finishes), so capturing
+  // the raw Impl* is safe in both the destructor and non-destructor paths.
+  Impl* impl_ptr = impl_.get();
+  net::post(impl_->strand_, [impl_ptr]() { impl_ptr->perform_stop_cleanup(); });
 
   impl_->join_ioc_thread(false);
 }
@@ -1236,16 +1243,6 @@ void TcpClient::Impl::join_ioc_thread(bool allow_detach) {
     }
     return;
   }
-
-  // stop() posts perform_stop_cleanup() (which resets work_guard_) only when
-  // weak_from_this().lock() succeeds. During ~TcpClient(), the shared_ptr use
-  // count is already 0, so that lock() is guaranteed null and the cleanup is
-  // never posted. request_stop() is the unconditional fallback that still
-  // guarantees io_context::run() returns: it fires the stop_callback
-  // registered in start() below, which calls ioc->stop() directly. Mirrors
-  // TcpServer::Impl's destructor/stop() (tcp_server.cc), which already does
-  // this before joining.
-  ioc_thread_.request_stop();
 
   try {
     ioc_thread_.join();
