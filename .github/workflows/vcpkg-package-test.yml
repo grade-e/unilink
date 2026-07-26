@@ -224,6 +224,16 @@ jobs:
           cmake_minimum_required(VERSION 3.15)
           project(wirestead_consumer LANGUAGES CXX)
           set(CMAKE_CXX_STANDARD 20)
+
+          # vcpkg's static triplets build wirestead and its dependencies
+          # (spdlog, fmt) against the static MSVC runtime. Without this, the
+          # consumer executable defaults to the dynamic runtime and link
+          # fails with LNK2038/LNK2005 runtime-library mismatches.
+          cmake_policy(SET CMP0091 NEW)
+          if(VCPKG_TARGET_TRIPLET MATCHES "-static`$")
+            set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded`$<`$<CONFIG:Debug>:Debug>")
+          endif()
+
           find_package(wirestead CONFIG REQUIRED)
 
           add_executable(vcpkg_consumer main.cpp)
