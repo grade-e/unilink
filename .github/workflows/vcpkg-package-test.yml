@@ -77,8 +77,8 @@ jobs:
         run: |
           set -euo pipefail
           if ! "${VCPKG_ROOT}/vcpkg" search wirestead | grep -q "^wirestead"; then
-            echo "wirestead port not found in vcpkg registry yet. Skipping package test."
-            echo "VCPKG_SKIP_PACKAGE_TEST=1" >> "$GITHUB_ENV"
+            echo "wirestead port not found in the vcpkg registry."
+            exit 1
           fi
 
       - name: Check wirestead port availability (Windows)
@@ -87,25 +87,25 @@ jobs:
         run: |
           $searchOutput = & "${env:VCPKG_ROOT}\vcpkg.exe" search wirestead
           if (-not ($searchOutput -match "^wirestead")) {
-            Write-Host "wirestead port not found in vcpkg registry yet. Skipping package test."
-            "VCPKG_SKIP_PACKAGE_TEST=1" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+            Write-Error "wirestead port not found in the vcpkg registry."
+            exit 1
           }
 
       - name: Install wirestead via vcpkg (Unix)
-        if: runner.os != 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os != 'Windows'
         run: |
           "${VCPKG_ROOT}/vcpkg" install "wirestead:${{ matrix.triplet }}" \
             --clean-after-build
 
       - name: Install wirestead via vcpkg (Windows)
-        if: runner.os == 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           & "${env:VCPKG_ROOT}\vcpkg.exe" install "wirestead:${{ matrix.triplet }}" `
             --clean-after-build
 
       - name: Verify installation layout (Unix)
-        if: runner.os != 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os != 'Windows'
         run: |
           set -euo pipefail
           INSTALL_ROOT="${VCPKG_ROOT}/installed/${{ matrix.triplet }}"
@@ -144,7 +144,7 @@ jobs:
           fi
 
       - name: Verify installation layout (Windows)
-        if: runner.os == 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $installRoot = "$env:VCPKG_ROOT\installed\${{ matrix.triplet }}"
@@ -171,7 +171,7 @@ jobs:
           $libs + $dlls | ForEach-Object { Write-Host "  $_" }
 
       - name: Build and run consumer sample (Unix)
-        if: runner.os != 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os != 'Windows'
         run: |
           set -euo pipefail
           WORKDIR=$(mktemp -d)
@@ -214,7 +214,7 @@ jobs:
           "${WORKDIR}/build/vcpkg_consumer"
 
       - name: Build and run consumer sample (Windows)
-        if: runner.os == 'Windows' && env.VCPKG_SKIP_PACKAGE_TEST != '1'
+        if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $workDir = Join-Path $env:RUNNER_TEMP "wirestead-consumer"

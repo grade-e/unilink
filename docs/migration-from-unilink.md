@@ -5,29 +5,90 @@ starting with v0.9.0. UniLink names are kept only as a v0.9.x source and build
 compatibility layer for existing consumers.
 
 The rename changes C++ mangled symbols, library filenames, and shared library
-SONAMEs. Existing v0.8.x binaries are not ABI-compatible with v0.9.0 and must
+SONAMEs. Existing v0.8.x binaries are not ABI-compatible with v0.9.x and must
 be rebuilt.
 
-## Compatibility Table
+## Name Mapping
 
-| Area | Wirestead canonical surface | UniLink compatibility surface |
+| Area | UniLink | Wirestead |
 |---|---|---|
-| C++ namespace | `namespace wirestead` | `namespace unilink = wirestead` |
-| Base exception | `wirestead::diagnostics::WiresteadException` | `wirestead::diagnostics::UnilinkException` type alias |
-| Header path | `<wirestead/wirestead.hpp>` and `<wirestead/...>` | `<unilink/...>` forwarding headers |
-| CMake project | `project(wirestead)` | legacy cache variables documented here |
-| CMake package | `find_package(wirestead CONFIG REQUIRED)` | `find_package(unilink CONFIG REQUIRED)` loads Wirestead and adds legacy targets |
-| CMake target | `wirestead::wirestead` | `unilink::unilink` links to `wirestead::wirestead` |
-| CMake options | `WIRESTEAD_*` | `UNILINK_*` inputs are forwarded during configure |
-| Environment variable | `WIRESTEAD_LOG_LEVEL` | `UNILINK_LOG_LEVEL` fallback when the Wirestead variable is absent |
-| Export macro | `WIRESTEAD_API` | `UNILINK_API` alias |
-| pkg-config | `wirestead.pc` with `-lwirestead` | `unilink.pc` with `-lwirestead` |
-| Library file | `libwirestead` | no `libunilink` binary compatibility shim |
-| SONAME | `libwirestead.so.0` on Linux | no `libunilink` SONAME |
-| Release assets | `wirestead-<version>-*` | old `unilink-<version>-*` asset names are not produced |
-| vcpkg port | `wirestead` (live in the vcpkg registry) | `jwsung91-unilink` is a deprecated alias depending on `wirestead` |
+| Header | `<unilink/unilink.hpp>` and `<unilink/...>` | `<wirestead/wirestead.hpp>` and `<wirestead/...>` |
+| Namespace | `unilink` | `wirestead` |
+| CMake package | `find_package(unilink CONFIG REQUIRED)` | `find_package(wirestead CONFIG REQUIRED)` |
+| CMake target | `unilink::unilink` | `wirestead::wirestead` |
+| Shared/static targets | `unilink::unilink_shared`, `unilink::unilink_static` | `wirestead::wirestead_shared`, `wirestead::wirestead_static` |
+| Library | `libunilink` in v0.8.x | `libwirestead` in v0.9.x |
+| SONAME | `libunilink.so.0` in v0.8.x | `libwirestead.so.0` in v0.9.x |
+| Export macro | `UNILINK_API` | `WIRESTEAD_API` |
+| Build macros | `UNILINK_BUILD_*`, `UNILINK_ENABLE_*` | `WIRESTEAD_BUILD_*`, `WIRESTEAD_ENABLE_*` |
+| Logging macros | `UNILINK_LOG_*` | `WIRESTEAD_LOG_*` |
+| Environment variable | `UNILINK_LOG_LEVEL` | `WIRESTEAD_LOG_LEVEL` |
+| pkg-config | `unilink.pc`, `pkg-config --libs unilink` | `wirestead.pc`, `pkg-config --libs wirestead` |
+| vcpkg port | `jwsung91-unilink` compatibility alias | `wirestead` |
+| Release assets | `unilink-<version>-*` | `wirestead-<version>-*` |
+| Python distribution | `unilink` | `wirestead` |
+| Python import | `unilink`, `unilink_py` | `wirestead` |
 
-## Source Compatibility
+## Migration Steps
+
+1. Change dependency declarations.
+
+   For vcpkg consumers, use the official port:
+
+   ```bash
+   vcpkg install wirestead
+   ```
+
+   For CMake consumers, depend on the Wirestead package:
+
+   ```cmake
+   find_package(wirestead CONFIG REQUIRED)
+   ```
+
+2. Change include paths.
+
+   ```cpp
+   #include <wirestead/wirestead.hpp>
+   ```
+
+   Prefer the public facade include for application code. Deep includes under
+   `transport/`, `interface/`, `memory/`, `concurrency/`, and `factory/` are
+   not part of the pre-1.0 compatibility promise.
+
+3. Change namespaces.
+
+   ```cpp
+   auto client = wirestead::tcp_client("127.0.0.1", 9000)
+       .auto_start(false)
+       .build();
+   ```
+
+4. Change CMake package and target usage.
+
+   ```cmake
+   find_package(wirestead CONFIG REQUIRED)
+   target_link_libraries(my_app PRIVATE wirestead::wirestead)
+   ```
+
+5. Change macros and environment variables.
+
+   Use `WIRESTEAD_*` CMake options, compile definitions, export macros, and
+   logging macros. Use `WIRESTEAD_LOG_LEVEL` instead of `UNILINK_LOG_LEVEL`.
+
+6. Do a clean rebuild.
+
+   Delete CMake build directories, CMake package caches, generated build-system
+   files, and any installed v0.8.x UniLink artifacts from the prefix you plan to
+   use. Do not rely on an incremental relink across the rename.
+
+7. Run tests.
+
+   At minimum, run a build of a small external consumer with
+   `find_package(wirestead CONFIG REQUIRED)`, include
+   `<wirestead/wirestead.hpp>`, link `wirestead::wirestead`, and execute a local
+   loopback smoke test for the transports your application uses.
+
+## Compatibility Surface
 
 Existing documented source usage continues to compile when rebuilt against
 v0.9.x:
@@ -40,58 +101,69 @@ unilink::builder::TcpClientBuilderDefault builder("127.0.0.1", 8080);
 
 The compatibility layer is intentionally narrow. It does not support reopening
 `namespace unilink { ... }`, direct forward declarations of internal UniLink
-symbols, undocumented internal headers, or checks that hard-code mangled symbol
-names or old shared library filenames.
+symbols, undocumented internal headers, checks that hard-code mangled symbol
+names, or old shared library filenames.
 
-## ABI Compatibility
+Provided compatibility surfaces:
+
+- `namespace unilink = wirestead`
+- `<unilink/...>` forwarding headers
+- `find_package(unilink CONFIG REQUIRED)`
+- `unilink::unilink`, `unilink::unilink_shared`, and
+  `unilink::unilink_static`
+- `UNILINK_*` CMake option inputs for matching `WIRESTEAD_*` options
+- `UNILINK_API`, `UNILINK_EXPORT`, `UNILINK_NO_EXPORT`, and `UNILINK_LOG_*`
+  macro aliases
+- `UNILINK_LOG_LEVEL` fallback when `WIRESTEAD_LOG_LEVEL` is unset or empty
+- `unilink.pc` forwarding pkg-config metadata
+
+`WIRESTEAD_LOG_LEVEL` takes precedence when both environment variables are set.
+If both old and new CMake options are explicitly set to different values,
+configure fails with `FATAL_ERROR`.
+
+The UniLink compatibility layer is guaranteed for the v0.9.x line. Its removal
+version is not fixed; removal will be decided later from real usage data and
+will not make UniLink the canonical identity again.
+
+## ABI and Install Prefixes
 
 v0.9.0 is an ABI break from v0.8.x. Consumers must rebuild all binaries and
 libraries that link to Wirestead. A `libunilink` symlink is intentionally not
 provided because the C++ symbols now live under `wirestead::`; a filename-only
 shim would hide the ABI break without making old binaries work.
 
-## Build Compatibility
+Do not install UniLink v0.8.x and Wirestead v0.9.x into the same prefix. The
+v0.9.x install includes legacy `<unilink/...>` forwarding headers and
+`unilinkConfig.cmake` for source compatibility, so an old UniLink install in
+the same prefix can create ambiguous headers, package configs, or stale binary
+artifacts. Use separate prefixes while migrating, or remove the old install
+before validating Wirestead.
 
-`WIRESTEAD_*` CMake options are canonical. `UNILINK_*` options are accepted as
-v0.9.x compatibility inputs and forwarded to the matching `WIRESTEAD_*` option
-early in configure. If both names are explicitly set to the same value, configure
-continues. If both names are explicitly set to different values, configure fails
-with `FATAL_ERROR`.
+## Python Users
 
-`WIRESTEAD_LOG_LEVEL` is read first at runtime. `UNILINK_LOG_LEVEL` is read only
-when `WIRESTEAD_LOG_LEVEL` is unset or empty. When both are set, Wirestead wins
-and the logger emits a diagnostic line so the precedence is visible.
+New code should install and import Wirestead:
 
-## Migration Examples
+```bash
+python -m pip uninstall -y unilink unilink_py
+python -m pip install wirestead
+```
 
-| Old | New |
-|---|---|
-| `find_package(unilink CONFIG REQUIRED)` | `find_package(wirestead CONFIG REQUIRED)` |
-| `target_link_libraries(app PRIVATE unilink::unilink)` | `target_link_libraries(app PRIVATE wirestead::wirestead)` |
-| `#include <unilink/unilink.hpp>` | `#include <wirestead/wirestead.hpp>` |
-| `unilink::tcp_client(...)` | `wirestead::tcp_client(...)` |
-| `catch (const unilink::diagnostics::UnilinkException&)` | `catch (const wirestead::diagnostics::WiresteadException&)` |
-| `-DUNILINK_ENABLE_CONFIG=ON` | `-DWIRESTEAD_ENABLE_CONFIG=ON` |
-| `UNILINK_LOG_LEVEL=DEBUG` | `WIRESTEAD_LOG_LEVEL=DEBUG` |
-| `pkg-config --libs unilink` | `pkg-config --libs wirestead` |
+```python
+import wirestead
+```
 
-## vcpkg Status
+The `wirestead` Python package does not require the C++ source tree when a
+prebuilt wheel exists for your Python version and platform. Python package and
+core versions track the same minor line: `wirestead` Python 0.9.x targets
+Wirestead C++ core 0.9.x.
 
-The canonical vcpkg port is `wirestead`, merged into the vcpkg registry in
-[microsoft/vcpkg#52984](https://github.com/microsoft/vcpkg/pull/52984).
-`jwsung91-unilink` is now a deprecated compatibility port that installs
-nothing itself and only depends on `wirestead`.
+Avoid mechanical `unilink` to `wirestead` replacement in generated files,
+vendored code, historical changelog entries, issue URLs, or code that still
+intentionally exercises the v0.9.x compatibility layer.
 
 ## External Repositories
 
 External documentation, Python binding, example, benchmark, and container
-repositories are outside this source-tree rename. Those repositories already
-moved from the `unilink-lab` organization to `wirestead`, and have since been
-renamed to `wirestead-docs`, `wirestead-python`, `wirestead-examples`,
-`wirestead-benchmarks`, and `wirestead-container` respectively.
-
-## Version Policy
-
-The UniLink compatibility layer is guaranteed for the v0.9.x line. Its removal
-version is not fixed; removal will be decided later from real usage data and
-will not make UniLink the canonical identity again.
+repositories moved from the `unilink-lab` organization to `wirestead`, and have
+since been renamed to `wirestead-docs`, `wirestead-python`,
+`wirestead-examples`, `wirestead-benchmarks`, and `wirestead-container`.

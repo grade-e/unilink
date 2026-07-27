@@ -1,12 +1,12 @@
 # Wirestead Core Documentation
 
 This core repository keeps minimal documentation entrypoints for source users,
-package consumers, and release maintainers. External documentation remains in
-its legacy repository location until it is moved.
+package consumers, migration users, and release maintainers.
 
 ## Core entrypoints
 
 - [Quick Start](quickstart.md)
 - [Installation](installation.md)
 - [API Stability Summary](api_stability.md)
+- [Migrating from UniLink](migration-from-unilink.md)
 - [Release Checklist](release_checklist.md)

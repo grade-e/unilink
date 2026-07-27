@@ -4,6 +4,9 @@
 
 `wirestead` is currently pre-1.0.
 
+The project tries to keep documented user-facing behavior stable within a minor
+line, but C++ API and ABI compatibility are not frozen before v1.0.
+
 ## Stable user-facing surface
 
 Prefer:
@@ -37,6 +40,30 @@ C++ ABI stability is not guaranteed before v1.0. The v0.9.0 Wirestead rename
 changes C++ symbols, library filenames, and SONAMEs; consumers moving from
 v0.8.x must rebuild.
 
+Patch releases may require relinking and retesting. Applications should not
+mix headers from one minor line with libraries from another.
+
+## Release Compatibility Policy
+
+Patch releases should avoid:
+
+- removing public include paths
+- removing public APIs
+- changing existing default behavior
+- removing compatibility shims
+- reducing supported platforms without prior notice
+
+Patch releases may include bug fixes, packaging fixes, CI fixes,
+documentation updates, test additions, and compatible implementation changes.
+
+Minor releases before v1.0 may introduce API changes when needed, but breaking
+changes should be documented in `CHANGELOG.md` and migration notes.
+
+Deprecated APIs and compatibility aliases should remain for at least the current
+minor line unless a security or correctness issue makes that impossible. The
+v0.9.x UniLink compatibility aliases are documented in
+`docs/migration-from-unilink.md`.
+
 ## Diagnostics
 
 `RuntimeStats` is a user-facing diagnostics snapshot. It is not a
@@ -64,3 +91,10 @@ Compatibility is not guaranteed for deep includes under:
 These headers are installed for implementation and advanced integration needs,
 but application code should include `<wirestead/wirestead.hpp>` unless a documented
 advanced API requires otherwise.
+
+## Python Binding Compatibility
+
+The Python binding follows the C++ core minor release line. Python package
+0.9.x targets Wirestead C++ core 0.9.x. Patch versions may differ when the
+Python package contains packaging, CI, binding, or documentation fixes that do
+not require a matching C++ core patch release.

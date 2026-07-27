@@ -20,8 +20,8 @@ gate and rejects Boost versions older than the configured minimum.
 vcpkg install wirestead
 ```
 
-`jwsung91-unilink` is now a deprecated compatibility alias that depends on
-`wirestead` and installs nothing itself; use `wirestead` directly.
+For UniLink migration details and compatibility aliases, see
+[Migrating from UniLink](migration-from-unilink.md).
 
 ## Minimal CMake find_package consumer
 
