@@ -3,8 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 project(
   wirestead
   VERSION 0.9.1
-  DESCRIPTION
-    "Robust, simple, cross-platform async C++ communication library"
+  DESCRIPTION "Robust, simple, cross-platform async C++ communication library"
   HOMEPAGE_URL "https://github.com/wirestead/wirestead"
   LANGUAGES CXX
 )
