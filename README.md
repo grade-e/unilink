@@ -3,7 +3,7 @@
 
 # Wirestead™
 
-_Wirestead is the successor to UniLink._
+_Wirestead is the successor to Unilink._
 
 **Robust, simple async communication for modern C++20.**
 
@@ -44,8 +44,8 @@ The project prioritizes **API clarity, predictable runtime behavior, and stabili
 vcpkg install wirestead
 ```
 
-For UniLink migration details and compatibility aliases, see
-[Migrating from UniLink](./docs/migration-from-unilink.md).
+For Unilink migration details and compatibility aliases, see
+[Migrating from Unilink](./docs/migration-from-unilink.md).
 
 External documentation, examples, Python bindings, and container repositories
 have moved to the `wirestead` organization as `wirestead-docs`,
@@ -73,7 +73,7 @@ Core repository entrypoints:
 - [Quick Start](https://github.com/wirestead/wirestead/blob/main/docs/quickstart.md)
 - [Installation](https://github.com/wirestead/wirestead/blob/main/docs/installation.md)
 - [API Stability Summary](https://github.com/wirestead/wirestead/blob/main/docs/api_stability.md)
-- [UniLink Migration Guide](https://github.com/wirestead/wirestead/blob/main/docs/migration-from-unilink.md)
+- [Unilink Migration Guide](https://github.com/wirestead/wirestead/blob/main/docs/migration-from-unilink.md)
 - [Changelog](https://github.com/wirestead/wirestead/blob/main/CHANGELOG.md)
 - [Error Model](https://github.com/wirestead/wirestead/blob/main/docs/error_model.md)
 - [Security and Threat Model](https://github.com/wirestead/wirestead/blob/main/docs/security.md)

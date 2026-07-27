@@ -61,7 +61,7 @@ changes should be documented in `CHANGELOG.md` and migration notes.
 
 Deprecated APIs and compatibility aliases should remain for at least the current
 minor line unless a security or correctness issue makes that impossible. The
-v0.9.x UniLink compatibility aliases are documented in
+v0.9.x Unilink compatibility aliases are documented in
 `docs/migration-from-unilink.md`.
 
 ## Diagnostics

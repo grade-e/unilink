@@ -1,7 +1,7 @@
-# Migrating from UniLink to Wirestead
+# Migrating from Unilink to Wirestead
 
 Wirestead is the canonical project, package, build, and C++ API identity
-starting with v0.9.0. UniLink names are kept only as a v0.9.x source and build
+starting with v0.9.0. Unilink names are kept only as a v0.9.x source and build
 compatibility layer for existing consumers.
 
 The rename changes C++ mangled symbols, library filenames, and shared library
@@ -10,7 +10,7 @@ be rebuilt.
 
 ## Name Mapping
 
-| Area | UniLink | Wirestead |
+| Area | Unilink | Wirestead |
 |---|---|---|
 | Header | `<unilink/unilink.hpp>` and `<unilink/...>` | `<wirestead/wirestead.hpp>` and `<wirestead/...>` |
 | Namespace | `unilink` | `wirestead` |
@@ -78,7 +78,7 @@ be rebuilt.
 6. Do a clean rebuild.
 
    Delete CMake build directories, CMake package caches, generated build-system
-   files, and any installed v0.8.x UniLink artifacts from the prefix you plan to
+   files, and any installed v0.8.x Unilink artifacts from the prefix you plan to
    use. Do not rely on an incremental relink across the rename.
 
 7. Run tests.
@@ -100,7 +100,7 @@ unilink::builder::TcpClientBuilderDefault builder("127.0.0.1", 8080);
 ```
 
 The compatibility layer is intentionally narrow. It does not support reopening
-`namespace unilink { ... }`, direct forward declarations of internal UniLink
+`namespace unilink { ... }`, direct forward declarations of internal Unilink
 symbols, undocumented internal headers, checks that hard-code mangled symbol
 names, or old shared library filenames.
 
@@ -121,9 +121,9 @@ Provided compatibility surfaces:
 If both old and new CMake options are explicitly set to different values,
 configure fails with `FATAL_ERROR`.
 
-The UniLink compatibility layer is guaranteed for the v0.9.x line. Its removal
+The Unilink compatibility layer is guaranteed for the v0.9.x line. Its removal
 version is not fixed; removal will be decided later from real usage data and
-will not make UniLink the canonical identity again.
+will not make Unilink the canonical identity again.
 
 ## ABI and Install Prefixes
 
@@ -132,9 +132,9 @@ libraries that link to Wirestead. A `libunilink` symlink is intentionally not
 provided because the C++ symbols now live under `wirestead::`; a filename-only
 shim would hide the ABI break without making old binaries work.
 
-Do not install UniLink v0.8.x and Wirestead v0.9.x into the same prefix. The
+Do not install Unilink v0.8.x and Wirestead v0.9.x into the same prefix. The
 v0.9.x install includes legacy `<unilink/...>` forwarding headers and
-`unilinkConfig.cmake` for source compatibility, so an old UniLink install in
+`unilinkConfig.cmake` for source compatibility, so an old Unilink install in
 the same prefix can create ambiguous headers, package configs, or stale binary
 artifacts. Use separate prefixes while migrating, or remove the old install
 before validating Wirestead.
