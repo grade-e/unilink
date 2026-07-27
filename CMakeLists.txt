@@ -4,7 +4,7 @@ project(
   wirestead
   VERSION 0.9.1
   DESCRIPTION
-    "Unified, cross-platform async C++ library for Serial, TCP, UDP, and UDS"
+    "Robust, simple, cross-platform async C++ communication library"
   HOMEPAGE_URL "https://github.com/wirestead/wirestead"
   LANGUAGES CXX
 )
