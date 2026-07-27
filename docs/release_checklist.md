@@ -33,6 +33,8 @@ CI, CPack, and consumer smoke workflows live here.
 
 - [ ] Core README links to `wirestead-docs`.
 - [ ] Core README and docs repo links were checked.
+- [ ] `CHANGELOG.md` and migration guidance are current for compatibility
+      changes.
 - [ ] Core minimal docs are present:
   - [ ] `docs/installation.md`
   - [ ] `docs/quickstart.md`
