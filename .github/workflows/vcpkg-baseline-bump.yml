@@ -1,0 +1,118 @@
+name: vcpkg baseline bump
+
+# VCPKG_BASELINE pins the microsoft/vcpkg commit every job builds against.
+# Pinning stops upstream drift from breaking builds, but it also means the
+# pin goes stale until somebody moves it, and dependabot does not track raw
+# git checkouts. This opens that bump as a reviewable PR on a schedule.
+#
+# The PR is a proposal, not a verdict. A candidate is only good once this
+# repository's CI has built against it -- including the Linux ARM64 jobs,
+# which is where a bad candidate showed up last time.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    name: Propose a vcpkg baseline bump
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve candidate commit
+        id: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(cat VCPKG_BASELINE)"
+          candidate="$(git ls-remote https://github.com/microsoft/vcpkg.git HEAD | cut -f1)"
+
+          if ! printf '%s' "${candidate}" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "could not resolve the vcpkg default branch: '${candidate}'"
+            exit 1
+          fi
+
+          echo "current:   ${current}"
+          echo "candidate: ${candidate}"
+          echo "current=${current}" >> "$GITHUB_OUTPUT"
+          echo "candidate=${candidate}" >> "$GITHUB_OUTPUT"
+
+          if [ "${current}" = "${candidate}" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A candidate without the port would fail every consuming job, so reject
+      # it here rather than spending a CI run to find out.
+      - name: Verify the candidate carries the wirestead port
+        if: steps.candidate.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CANDIDATE: ${{ steps.candidate.outputs.candidate }}
+        run: |
+          set -euo pipefail
+          gh api "repos/microsoft/vcpkg/contents/ports/wirestead/vcpkg.json?ref=${CANDIDATE}" --jq '.name' > /dev/null
+          echo "wirestead port is present at the candidate commit"
+
+      - name: Open or update the bump pull request
+        if: steps.candidate.outputs.changed == 'true'
+        shell: bash
+        env:
+          # A PR opened with GITHUB_TOKEN does not trigger workflow runs, so
+          # prefer a PAT when one is configured. Without it the PR still opens,
+          # but CI has to be kicked by hand before the bump means anything.
+          GH_TOKEN: ${{ secrets.VCPKG_BUMP_TOKEN || secrets.GITHUB_TOKEN }}
+          CURRENT: ${{ steps.candidate.outputs.current }}
+          CANDIDATE: ${{ steps.candidate.outputs.candidate }}
+          HAS_PAT: ${{ secrets.VCPKG_BUMP_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          branch="automation/vcpkg-baseline"
+          short="${CANDIDATE:0:12}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B "${branch}"
+          printf '%s\n' "${CANDIDATE}" > VCPKG_BASELINE
+          git add VCPKG_BASELINE
+          git commit -m "ci: bump the vcpkg baseline to ${short}"
+          git push --force origin "${branch}"
+
+          {
+            printf 'Moves `VCPKG_BASELINE` from `%s` to [`%s`](https://github.com/microsoft/vcpkg/commit/%s).\n\n' \
+              "${CURRENT}" "${short}" "${CANDIDATE}"
+            printf 'Opened automatically because the pin had drifted behind vcpkg default branch. The `wirestead` port was confirmed present at the candidate commit.\n\n'
+            printf 'CI must be green on this branch before merging. The Linux ARM64 jobs matter most: a baseline can build everywhere else and still fail there.\n\n'
+            if [ "${HAS_PAT}" != "true" ]; then
+              printf 'This PR was opened with `GITHUB_TOKEN`, so GitHub will not start workflow runs for it. Close and reopen it, or push any commit, to trigger CI. Configure a `VCPKG_BUMP_TOKEN` secret to have that happen automatically.\n\n'
+            fi
+            printf 'If CI fails, do not merge: pick an older commit that this repository has built against instead of taking the default branch tip.\n'
+          } > vcpkg-bump-body.md
+
+          existing="$(gh pr list --head "${branch}" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "${existing}" ]; then
+            gh pr edit "${existing}" --body-file vcpkg-bump-body.md
+            echo "updated existing PR #${existing}"
+          else
+            gh pr create \
+              --base main \
+              --head "${branch}" \
+              --title "ci: bump the vcpkg baseline to ${short}" \
+              --body-file vcpkg-bump-body.md
+          fi
+
+      - name: Report no change
+        if: steps.candidate.outputs.changed != 'true'
+        run: echo "VCPKG_BASELINE already matches the vcpkg default branch"
