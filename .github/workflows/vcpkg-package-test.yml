@@ -56,11 +56,17 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ${{ env.VCPKG_ROOT }}
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('**/vcpkg.json') }}
+          key: vcpkg-${{ runner.os }}-${{ hashFiles('VCPKG_BASELINE', '**/vcpkg.json') }}
 
       - name: Clone vcpkg
         if: steps.cache-vcpkg.outputs.cache-hit != 'true'
-        run: git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
+        shell: bash
+        run: |
+          sha="$(cat VCPKG_BASELINE)"
+          git init "${{ env.VCPKG_ROOT }}"
+          git -C "${{ env.VCPKG_ROOT }}" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "${{ env.VCPKG_ROOT }}" fetch --depth 1 origin "$sha"
+          git -C "${{ env.VCPKG_ROOT }}" checkout FETCH_HEAD
 
       - name: Bootstrap vcpkg (Unix)
         if: runner.os != 'Windows'

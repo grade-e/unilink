@@ -16,6 +16,13 @@ and ABI policy.
 
 - Clarified that the official vcpkg port is the canonical package-consumer
   install path.
+- Aligned the CMake project description with the GitHub repository
+  description. This string is user-visible: it is carried into the CPack
+  package metadata and the generated pkg-config description.
+- Pinned the `microsoft/vcpkg` checkout used by CI, the CMake matrix, the
+  release workflow, the vcpkg package test, and the `setup-vcpkg` composite
+  action to a reviewed commit recorded in `VCPKG_BASELINE`, instead of cloning
+  whatever is on its default branch at build time.
 
 ### Deprecated
 
@@ -28,7 +35,9 @@ and ABI policy.
 
 ### Fixed
 
-- Nothing.
+- Fixed the Windows consumer sample linking against a different MSVC runtime
+  than the static vcpkg triplet its dependencies were built with, which
+  surfaced as LNK2038 and LNK2005 errors after upstream vcpkg drift.
 
 ### Security
 

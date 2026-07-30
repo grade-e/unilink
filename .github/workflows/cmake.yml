@@ -120,7 +120,13 @@ jobs:
 
       - name: Clone vcpkg
         if: runner.os == 'Windows'
-        run: git clone --depth 1 https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
+        shell: bash
+        run: |
+          sha="$(cat VCPKG_BASELINE)"
+          git init "${{ env.VCPKG_ROOT }}"
+          git -C "${{ env.VCPKG_ROOT }}" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "${{ env.VCPKG_ROOT }}" fetch --depth 1 origin "$sha"
+          git -C "${{ env.VCPKG_ROOT }}" checkout FETCH_HEAD
 
       - name: Bootstrap vcpkg (Windows)
         if: runner.os == 'Windows'

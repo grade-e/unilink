@@ -23,7 +23,11 @@ runs:
           VCPKG_ROOT="${GITHUB_WORKSPACE}/vcpkg"
         fi
         if [ ! -d "${VCPKG_ROOT}/.git" ]; then
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git "${VCPKG_ROOT}"
+          VCPKG_BASELINE_SHA="$(cat "${GITHUB_WORKSPACE}/VCPKG_BASELINE")"
+          git init "${VCPKG_ROOT}"
+          git -C "${VCPKG_ROOT}" remote add origin https://github.com/microsoft/vcpkg.git
+          git -C "${VCPKG_ROOT}" fetch --depth 1 origin "${VCPKG_BASELINE_SHA}"
+          git -C "${VCPKG_ROOT}" checkout FETCH_HEAD
         fi
         "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
         retry_vcpkg_install() {
