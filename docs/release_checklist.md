@@ -19,7 +19,9 @@ CI, CPack, and consumer smoke workflows live here.
 
 ## Packaging
 
-- [ ] `VCPKG_BASELINE` is current, and CI passed against that commit.
+- [ ] `VCPKG_BASELINE` is current, and CI passed against that commit. The weekly
+      `vcpkg baseline bump` workflow proposes this as a pull request; a bump is
+      only good once CI is green on it, the Linux ARM64 jobs included.
 - [ ] Release workflow dry-run completed.
 - [ ] CPack package was generated.
 - [ ] Package contains headers.

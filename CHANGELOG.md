@@ -23,6 +23,9 @@ and ABI policy.
   release workflow, the vcpkg package test, and the `setup-vcpkg` composite
   action to a reviewed commit recorded in `VCPKG_BASELINE`, instead of cloning
   whatever is on its default branch at build time.
+- Added a weekly `vcpkg baseline bump` workflow that proposes a
+  `VCPKG_BASELINE` update as a reviewable pull request, so the pin can be kept
+  current without relying on someone remembering to move it.
 
 ### Deprecated
 
