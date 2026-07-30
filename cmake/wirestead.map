@@ -1,0 +1,22 @@
+# Linker version script: export only symbols this project owns.
+#
+# Without it the shared library also exports symbols it merely links against,
+# including boost::asio::detail internals. Those are weak and unique symbols,
+# so a consumer that loads a different Boost into the same process can have
+# them merged, which is an ODR violation that surfaces as hard-to-diagnose
+# runtime behavior rather than a link error.
+#
+# Every wirestead symbol stays exported, including typeinfo and vtables, which
+# exceptions thrown across the library boundary need in order to be caught by
+# type. This is not a reduction of the wirestead ABI surface.
+{
+  global:
+    _ZN9wirestead*;
+    _ZNK9wirestead*;
+    _ZTIN9wirestead*;
+    _ZTSN9wirestead*;
+    _ZTVN9wirestead*;
+    _ZTHN9wirestead*;
+  local:
+    *;
+};

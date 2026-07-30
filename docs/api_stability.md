@@ -74,6 +74,23 @@ synchronization primitive.
 `SendResult` is currently design-only unless explicitly implemented in a future
 release. It is not part of the runtime API in the current release line.
 
+## Exported symbols
+
+The shared library exports the symbols this project owns and nothing else.
+Hidden visibility alone does not achieve that, because weak and unique symbols
+survive it: before this was enforced, `libwirestead.so` also re-exported
+`boost::asio::detail` internals it merely linked against. A consumer loading a
+different Boost into the same process could have those merged, which is an ODR
+violation that shows up as runtime misbehavior rather than a link error.
+
+This restricts what leaks out, not what Wirestead offers. Every `wirestead`
+symbol stays exported, including the typeinfo and vtables that exceptions
+thrown across the library boundary need in order to be caught by type. The
+lists live in `cmake/wirestead.map` (ELF) and `cmake/wirestead.exp` (Mach-O);
+MSVC needs no equivalent because exports there are already opt-in through
+`__declspec(dllexport)`. Set `WIRESTEAD_LIMIT_EXPORTED_SYMBOLS=OFF` to fall
+back to the previous behavior.
+
 ## Internal headers
 
 Internal headers are not part of the compatibility guarantee before v1.0.

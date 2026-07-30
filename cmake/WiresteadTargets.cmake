@@ -1,11 +1,44 @@
 # Wirestead library target construction and shared target utilities.
 
+# Resolved while this file is being included, so it points at cmake/ rather than
+# at whatever listfile happens to call the functions below.
+set(WIRESTEAD_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
+
 function(wirestead_configure_library_target target)
   target_link_libraries(${target} PUBLIC wirestead_dependencies)
   target_compile_features(${target} PUBLIC cxx_std_20)
   target_include_directories(
     ${target} PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
                      $<INSTALL_INTERFACE:include>
+  )
+endfunction()
+
+# Hidden visibility alone does not stop the shared library from re-exporting
+# symbols it links against, because weak and unique symbols survive it. Ask the
+# linker for the wirestead symbols and nothing else. MSVC needs no equivalent:
+# exports there are already opt-in through __declspec(dllexport).
+function(wirestead_limit_exported_symbols target)
+  if(NOT WIRESTEAD_LIMIT_EXPORTED_SYMBOLS)
+    return()
+  endif()
+
+  if(APPLE)
+    set(_script "${WIRESTEAD_CMAKE_DIR}/wirestead.exp")
+    target_link_options(
+      ${target} PRIVATE "LINKER:-exported_symbols_list,${_script}"
+    )
+  elseif(UNIX)
+    set(_script "${WIRESTEAD_CMAKE_DIR}/wirestead.map")
+    target_link_options(${target} PRIVATE "LINKER:--version-script,${_script}")
+  else()
+    return()
+  endif()
+
+  # Relink when the script changes; it is an input to the link step.
+  set_property(
+    TARGET ${target}
+    APPEND
+    PROPERTY LINK_DEPENDS "${_script}"
   )
 endfunction()
 
@@ -24,6 +57,7 @@ function(wirestead_configure_shared_target target output_name)
     PUBLIC WIRESTEAD_BUILD_SHARED UNILINK_BUILD_SHARED
     PRIVATE WIRESTEAD_BUILDING_LIBRARY UNILINK_BUILDING_LIBRARY
   )
+  wirestead_limit_exported_symbols(${target})
   wirestead_configure_library_target(${target})
 endfunction()
 
