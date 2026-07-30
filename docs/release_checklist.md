@@ -19,6 +19,7 @@ CI, CPack, and consumer smoke workflows live here.
 
 ## Packaging
 
+- [ ] `VCPKG_BASELINE` is current, and CI passed against that commit.
 - [ ] Release workflow dry-run completed.
 - [ ] CPack package was generated.
 - [ ] Package contains headers.

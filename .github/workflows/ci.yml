@@ -241,7 +241,11 @@ jobs:
         shell: pwsh
         run: |
           choco install ninja --no-progress -y
-          git clone --depth 1 https://github.com/microsoft/vcpkg.git C:/vcpkg-arm
+          $sha = (Get-Content VCPKG_BASELINE -Raw).Trim()
+          git init C:/vcpkg-arm
+          git -C C:/vcpkg-arm remote add origin https://github.com/microsoft/vcpkg.git
+          git -C C:/vcpkg-arm fetch --depth 1 origin $sha
+          git -C C:/vcpkg-arm checkout FETCH_HEAD
           & "C:/vcpkg-arm/bootstrap-vcpkg.bat"
           & "C:/vcpkg-arm/vcpkg.exe" install boost-asio:arm64-windows boost-system:arm64-windows spdlog:arm64-windows
           echo "VCPKG_ROOT=C:/vcpkg-arm" >> $env:GITHUB_ENV
