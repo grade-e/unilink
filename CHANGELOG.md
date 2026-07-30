@@ -38,6 +38,13 @@ and ABI policy.
 
 ### Fixed
 
+- Stopped the shared library from re-exporting `boost::asio::detail` symbols it
+  merely links against. Those are weak and unique symbols that hidden
+  visibility does not remove, so a consumer loading a different Boost into the
+  same process could have them merged, which is an ODR violation. No
+  `wirestead` symbol changed: the export surface this project owns, including
+  the typeinfo and vtables needed to catch exceptions across the library
+  boundary, is unchanged.
 - Fixed the Windows consumer sample linking against a different MSVC runtime
   than the static vcpkg triplet its dependencies were built with, which
   surfaced as LNK2038 and LNK2005 errors after upstream vcpkg drift.

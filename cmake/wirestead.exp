@@ -1,0 +1,8 @@
+# Mach-O exported symbols list, the Darwin counterpart to wirestead.map.
+# Mach-O prefixes mangled C++ symbols with an extra underscore.
+__ZN9wirestead*
+__ZNK9wirestead*
+__ZTIN9wirestead*
+__ZTSN9wirestead*
+__ZTVN9wirestead*
+__ZTHN9wirestead*

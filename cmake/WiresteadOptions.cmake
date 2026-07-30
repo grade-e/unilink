@@ -33,6 +33,9 @@ foreach(_suffix IN LISTS _wirestead_option_suffixes)
 endforeach()
 
 option(WIRESTEAD_BUILD_SHARED "Build shared library" ON)
+option(WIRESTEAD_LIMIT_EXPORTED_SYMBOLS
+       "Restrict shared library exports to wirestead symbols" ON
+)
 option(WIRESTEAD_BUILD_STATIC "Build static library" ON)
 option(WIRESTEAD_BUILD_TESTS "Build tests" ON)
 option(
