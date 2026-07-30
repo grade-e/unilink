@@ -20,9 +20,9 @@ and ABI policy.
   description. This string is user-visible: it is carried into the CPack
   package metadata and the generated pkg-config description.
 - Pinned the `microsoft/vcpkg` checkout used by CI, the CMake matrix, the
-  release workflow, and the vcpkg package test to a reviewed commit recorded
-  in `VCPKG_BASELINE`, instead of cloning whatever is on its default branch at
-  build time.
+  release workflow, the vcpkg package test, and the `setup-vcpkg` composite
+  action to a reviewed commit recorded in `VCPKG_BASELINE`, instead of cloning
+  whatever is on its default branch at build time.
 
 ### Deprecated
 
