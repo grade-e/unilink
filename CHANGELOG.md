@@ -19,6 +19,12 @@ and ABI policy.
 - Aligned the CMake project description with the GitHub repository
   description. This string is user-visible: it is carried into the CPack
   package metadata and the generated pkg-config description.
+- Extended the install-and-consume CI job to macOS. It previously ran on Linux
+  only, so the installed-package path was never exercised on any other
+  platform.
+- Added a CI check that inspects the installed shared library and fails if it
+  exports no Wirestead symbols or any third-party ones. The unit tests link the
+  static library, so nothing else looks at what the shared library exports.
 - Pinned the `microsoft/vcpkg` checkout used by CI, the CMake matrix, the
   release workflow, the vcpkg package test, and the `setup-vcpkg` composite
   action to a reviewed commit recorded in `VCPKG_BASELINE`, instead of cloning
