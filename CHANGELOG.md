@@ -19,6 +19,10 @@ and ABI policy.
 - Aligned the CMake project description with the GitHub repository
   description. This string is user-visible: it is carried into the CPack
   package metadata and the generated pkg-config description.
+- Documented that out-of-line functions declared in internal headers are not
+  always exported from the shared library, so code calling them links against
+  the static library but not the shared one. The documented public surface is
+  exported from both.
 - Extended the install-and-consume CI job to macOS. It previously ran on Linux
   only, so the installed-package path was never exercised on any other
   platform.

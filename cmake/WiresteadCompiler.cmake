@@ -175,8 +175,11 @@ int main() {
     endif()
   endif()
 
-  # Visibility settings (disabled for now to avoid linking issues)
-  # add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
+  # Visibility is not set globally here on purpose. The library targets set it
+  # per target in WiresteadTargets.cmake through CXX_VISIBILITY_PRESET and
+  # VISIBILITY_INLINES_HIDDEN, which also keeps it off consumers of this
+  # project. Adding -fvisibility=hidden here would be redundant, and it would
+  # apply to test and example targets that do not want it.
 
   # Optimization flags
   if(CMAKE_BUILD_TYPE STREQUAL "Release")

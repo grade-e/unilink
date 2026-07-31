@@ -105,6 +105,13 @@ Compatibility is not guaranteed for deep includes under:
 - `concurrency/*`
 - `factory/*`
 
+A further consequence applies to the shared library. Out-of-line functions
+declared in those headers are not always exported from it, because they carry
+no export annotation and hidden visibility keeps them internal. Code that
+includes an internal header and calls such a function links against the static
+library but not the shared one. The documented public surface is unaffected;
+it is exported from both.
+
 These headers are installed for implementation and advanced integration needs,
 but application code should include `<wirestead/wirestead.hpp>` unless a documented
 advanced API requires otherwise.
