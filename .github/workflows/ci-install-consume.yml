@@ -20,18 +20,30 @@ on:
 
 jobs:
   build-test-install-consume:
-    runs-on: ubuntu-24.04
+    name: install & consume (${{ matrix.os }}, ${{ matrix.compiler }})
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        compiler: [gcc, clang]
+        include:
+          - os: ubuntu-24.04
+            compiler: gcc
+            triplet: x64-linux
+          - os: ubuntu-24.04
+            compiler: clang
+            triplet: x64-linux
+          - os: macos-15
+            compiler: clang
+            triplet: arm64-osx
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up C++ toolchain
+      - name: Set up C++ toolchain (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build pkg-config
-          
+
           if [ "${{ matrix.compiler }}" = "gcc" ]; then
             echo "CC=gcc" >> $GITHUB_ENV
             echo "CXX=g++" >> $GITHUB_ENV
@@ -41,10 +53,17 @@ jobs:
             echo "CXX=clang++-18" >> $GITHUB_ENV
           fi
 
+      - name: Set up C++ toolchain (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja pkg-config
+          echo "CC=clang" >> $GITHUB_ENV
+          echo "CXX=clang++" >> $GITHUB_ENV
+
       - name: Install dependencies with vcpkg
         uses: ./.github/actions/setup-vcpkg
         with:
-          triplet: x64-linux
+          triplet: ${{ matrix.triplet }}
 
       - name: Configure
         run: |
@@ -64,6 +83,41 @@ jobs:
 
       - name: Install
         run: cmake --install build --prefix "$RUNNER_TEMP/wirestead-install"
+
+      # Guards the export restriction in cmake/wirestead.map and wirestead.exp.
+      # A wrong symbol pattern does not fail the link, it just exports nothing
+      # or everything, and the unit tests cannot notice because they link the
+      # static library. This is the only place that inspects the shared one.
+      - name: Verify shared library exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          lib_dir="$RUNNER_TEMP/wirestead-install/lib"
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            lib="$(ls "$lib_dir"/libwirestead*.dylib | head -n 1)"
+            symbols="$(nm -gU "$lib")"
+          else
+            lib="$(ls "$lib_dir"/libwirestead.so.* | head -n 1)"
+            symbols="$(nm -D --defined-only "$lib")"
+          fi
+          echo "inspecting $lib"
+
+          owner() { printf '%s\n' "$symbols" | grep -cE "^[^ ]* [A-Za-z] _?_Z[A-Za-z]*$1" || true; }
+          ours="$(owner 9wirestead)"
+          foreign="$(( $(owner 5boost) + $(owner 6spdlog) + $(owner 3fmt) ))"
+          echo "wirestead symbols: $ours, third-party symbols: $foreign"
+
+          if [ "$ours" -eq 0 ]; then
+            echo "the shared library exports no wirestead symbols; the export list did not match"
+            exit 1
+          fi
+          if [ "$foreign" -ne 0 ]; then
+            echo "the shared library re-exports third-party symbols:"
+            offenders="$(printf '%s\n' "$symbols" | grep -E "^[^ ]* [A-Za-z] _?_Z[A-Za-z]*(5boost|6spdlog|3fmt)" || true)"
+            printf '%s\n' "$offenders" | head -20 || true
+            exit 1
+          fi
 
       - name: Consume canonical package (find_package)
         run: |
