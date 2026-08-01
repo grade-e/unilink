@@ -70,17 +70,23 @@ jobs:
           triplet: ${{ matrix.triplet }}
 
       # The composite action bootstraps through bootstrap-vcpkg.sh, which the
-      # Windows runners cannot use. They ship vcpkg preinstalled, which the
-      # existing `windows` job in ci.yml already relies on.
+      # Windows runners cannot use, so the pinned checkout is done inline here
+      # to keep this job on the same VCPKG_BASELINE as every other one.
       - name: Install dependencies with vcpkg (Windows)
         if: runner.os == 'Windows'
         shell: bash
         run: |
-          "/c/vcpkg/vcpkg.exe" install boost-asio:${{ matrix.triplet }} boost-system:${{ matrix.triplet }} spdlog:${{ matrix.triplet }}
+          sha="$(cat VCPKG_BASELINE)"
+          git init C:/vcpkg-pinned
+          git -C C:/vcpkg-pinned remote add origin https://github.com/microsoft/vcpkg.git
+          git -C C:/vcpkg-pinned fetch --depth 1 origin "$sha"
+          git -C C:/vcpkg-pinned checkout FETCH_HEAD
+          "C:/vcpkg-pinned/bootstrap-vcpkg.bat"
+          "C:/vcpkg-pinned/vcpkg.exe" install boost-asio:${{ matrix.triplet }} boost-system:${{ matrix.triplet }} spdlog:${{ matrix.triplet }}
           {
-            echo "VCPKG_ROOT=C:/vcpkg"
+            echo "VCPKG_ROOT=C:/vcpkg-pinned"
             echo "VCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
-            echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+            echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg-pinned/scripts/buildsystems/vcpkg.cmake"
           } >> "$GITHUB_ENV"
 
       - name: Configure
@@ -196,7 +202,7 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             generator=(-G "Visual Studio 17 2022" -A x64)
             binary="./build/Release/consumer.exe"
-            export PATH="$install_prefix/bin:/c/vcpkg/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
+            export PATH="$install_prefix/bin:/c/vcpkg-pinned/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
           else
             generator=(-G Ninja)
             binary="./build/consumer"
@@ -237,7 +243,7 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then
             generator=(-G "Visual Studio 17 2022" -A x64)
             binary="./build/Release/legacy_consumer.exe"
-            export PATH="$install_prefix/bin:/c/vcpkg/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
+            export PATH="$install_prefix/bin:/c/vcpkg-pinned/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
           else
             generator=(-G Ninja)
             binary="./build/legacy_consumer"

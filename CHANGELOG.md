@@ -41,10 +41,13 @@ and ABI policy.
 - Added a CI check that inspects the installed shared library and fails if it
   exports no Wirestead symbols or any third-party ones. The unit tests link the
   static library, so nothing else looks at what the shared library exports.
-- Pinned the `microsoft/vcpkg` checkout used by CI, the CMake matrix, the
-  release workflow, the vcpkg package test, and the `setup-vcpkg` composite
-  action to a reviewed commit recorded in `VCPKG_BASELINE`, instead of cloning
-  whatever is on its default branch at build time.
+- Pinned every `microsoft/vcpkg` checkout to a reviewed commit recorded in
+  `VCPKG_BASELINE`, instead of cloning whatever is on its default branch at
+  build time. This covers CI, the CMake matrix, the release workflow, the
+  vcpkg package test, the install-and-consume job, and the `setup-vcpkg`
+  composite action. The Windows x64 legs previously used the vcpkg that ships
+  in the runner image, which meant release binaries depended on whichever
+  version that image happened to carry.
 - Added a weekly `vcpkg baseline bump` workflow that proposes a
   `VCPKG_BASELINE` update as a reviewable pull request, so the pin can be kept
   current without relying on someone remembering to move it.

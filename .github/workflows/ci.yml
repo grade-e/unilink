@@ -233,8 +233,14 @@ jobs:
         shell: pwsh
         run: |
           choco install ninja --no-progress -y
-          & "C:\vcpkg\vcpkg.exe" install boost-asio:x64-windows boost-system:x64-windows spdlog:x64-windows
-          echo "VCPKG_ROOT=C:/vcpkg" >> $env:GITHUB_ENV
+          $sha = (Get-Content VCPKG_BASELINE -Raw).Trim()
+          git init C:/vcpkg-pinned
+          git -C C:/vcpkg-pinned remote add origin https://github.com/microsoft/vcpkg.git
+          git -C C:/vcpkg-pinned fetch --depth 1 origin $sha
+          git -C C:/vcpkg-pinned checkout FETCH_HEAD
+          & "C:/vcpkg-pinned/bootstrap-vcpkg.bat"
+          & "C:/vcpkg-pinned/vcpkg.exe" install boost-asio:x64-windows boost-system:x64-windows spdlog:x64-windows
+          echo "VCPKG_ROOT=C:/vcpkg-pinned" >> $env:GITHUB_ENV
 
       - name: Set up vcpkg (ARM64)
         if: matrix.cmake_arch == 'ARM64'
