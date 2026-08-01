@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## Unreleased
+## v0.9.2 - 2026-08-01
 
 ### Added
 
@@ -35,9 +35,7 @@ and ABI policy.
   exported from both.
 - Extended the install-and-consume CI job to macOS and Windows. It previously
   ran on Linux only, so the installed-package path was never exercised on any
-  other platform. It previously ran on Linux
-  only, so the installed-package path was never exercised on any other
-  platform.
+  other platform.
 - Added a CI check that inspects the installed shared library and fails if it
   exports no Wirestead symbols or any third-party ones. The unit tests link the
   static library, so nothing else looks at what the shared library exports.
@@ -57,10 +55,6 @@ and ABI policy.
 - Unilink compatibility names remain deprecated compatibility surfaces for the
   v0.9.x line.
 
-### Removed
-
-- Nothing.
-
 ### Fixed
 
 - Made the TCP client retry tests wait for the attempts they assert on instead
@@ -78,9 +72,17 @@ and ABI policy.
   than the static vcpkg triplet its dependencies were built with, which
   surfaced as LNK2038 and LNK2005 errors after upstream vcpkg drift.
 
-### Security
+### Compatibility
 
-- Nothing.
+- The shared library no longer exports symbols this project does not own.
+  Every `wirestead` symbol is still exported, including those from internal
+  namespaces and the typeinfo and vtables that exceptions thrown across the
+  library boundary need, so no Wirestead API was removed. Code that resolved a
+  `boost`, `spdlog`, or `fmt` symbol out of `libwirestead` rather than linking
+  it directly must now link it directly; that was never a supported use.
+- No intentional public API removal was made in v0.9.2.
+- Known limitations remain the pre-1.0 ABI policy and the v0.9.x Unilink
+  compatibility layer described in `docs/migration-from-unilink.md`.
 
 ## v0.9.1 - 2026-07-26
 
