@@ -60,6 +60,10 @@ and ABI policy.
 
 ### Fixed
 
+- Made the TCP client retry tests wait for the attempts they assert on instead
+  of running for a fixed duration and hoping. They raced anything that slowed
+  the machine down, and one of them failed a coverage run on a resolve that
+  took longer than the window allowed.
 - Stopped the shared library from re-exporting `boost::asio::detail` symbols it
   merely links against. Those are weak and unique symbols that hidden
   visibility does not remove, so a consumer loading a different Boost into the
