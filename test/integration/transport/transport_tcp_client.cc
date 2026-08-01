@@ -38,6 +38,32 @@
 
 using namespace wirestead;
 using namespace wirestead::transport;
+
+namespace {
+
+// Drives the io_context in slices until `predicate` holds, or the timeout
+// expires. The retry tests below used to run for a fixed duration and then
+// assert on how many attempts had happened, which races anything that slows
+// the machine down: a slow resolver, a loaded runner, coverage
+// instrumentation. Waiting on the condition instead makes them finish as soon
+// as the attempts arrive and tolerate the cases where they arrive late.
+template <typename Predicate>
+bool run_until(boost::asio::io_context& ioc, Predicate predicate,
+               std::chrono::milliseconds timeout = std::chrono::seconds(5)) {
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (!predicate()) {
+    if (std::chrono::steady_clock::now() >= deadline) {
+      return false;
+    }
+    if (ioc.stopped()) {
+      ioc.restart();
+    }
+    ioc.run_for(std::chrono::milliseconds(10));
+  }
+  return true;
+}
+
+}  // namespace
 using namespace wirestead::test;
 using namespace std::chrono_literals;
 namespace net = boost::asio;
@@ -252,7 +278,7 @@ TEST_F(TransportTcpClientTest, OnBytesExceptionTriggersReconnect) {
   client_->start();
 
   // Run enough to connect, receive, throw, and schedule a retry
-  ioc.run_for(150ms);
+  run_until(ioc, [&] { return connecting_events.load() >= 2; });
 
   EXPECT_EQ(error_events.load(), 0);
   // At least two Connecting states: initial + post-exception reconnect attempt
@@ -374,7 +400,7 @@ TEST_F(TransportTcpClientTest, ConnectionRefusedTriggersRetry) {
 
   // Run enough time for initial attempt + at least one retry
   // Initial (0ms) + Timeout(100ms) + Interval(50ms) + Retry(0ms) = ~150ms minimum
-  ioc.run_for(std::chrono::milliseconds(500));
+  run_until(ioc, [&] { return connecting_count.load() >= 2; });
 
   EXPECT_GE(connecting_count.load(), 2);
 
@@ -401,7 +427,7 @@ TEST_F(TransportTcpClientTest, ResolveFailureTriggersRetry) {
   client_->start();
 
   // Run enough time for initial attempt + retry. Resolve might take time, give it margin.
-  ioc.run_for(std::chrono::milliseconds(500));
+  run_until(ioc, [&] { return connecting_count.load() >= 2; });
 
   EXPECT_GE(connecting_count.load(), 2);
 
@@ -493,7 +519,7 @@ TEST_F(TransportTcpClientTest, ConnectionTimeoutTriggersRetry) {
   client_->start();
 
   // Run enough for initial + 2 retries (timeout 50ms + retry interval 50ms = 100ms per attempt)
-  ioc.run_for(std::chrono::milliseconds(500));
+  run_until(ioc, [&] { return connecting_count.load() >= 3; });
 
   EXPECT_GE(connecting_count.load(), 3);
 
@@ -524,7 +550,7 @@ TEST_F(TransportTcpClientTest, UnlimitedRetriesKeepsConnecting) {
   // Run for enough time to get 5 attempts.
   // Each attempt: Timeout(50) + Interval(50) = 100ms.
   // 5 attempts needs ~500ms. Give it 1000ms.
-  ioc.run_for(std::chrono::milliseconds(1000));
+  run_until(ioc, [&] { return connecting_count.load() >= 5; });
 
   EXPECT_GE(connecting_count.load(), 5);
 
@@ -749,7 +775,7 @@ TEST_F(TransportTcpClientTest, UnknownOnBytesExceptionTriggersReconnect) {
   client_->on_bytes([](memory::ConstByteSpan) { throw 7; });
 
   client_->start();
-  ioc.run_for(200ms);
+  run_until(ioc, [&] { return connecting_events.load() >= 2; });
 
   EXPECT_GE(connecting_events.load(), 2);
 
