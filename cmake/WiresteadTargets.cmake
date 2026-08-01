@@ -4,7 +4,23 @@
 # at whatever listfile happens to call the functions below.
 set(WIRESTEAD_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
+# Only the optimized configurations; enabling it for Debug would slow builds
+# down for no benefit. Applied per target so it does not reach tests, examples
+# or anything consuming this project.
+function(wirestead_enable_ipo target)
+  if(NOT WIRESTEAD_ENABLE_LTO OR NOT WIRESTEAD_IPO_SUPPORTED)
+    return()
+  endif()
+  set_target_properties(
+    ${target}
+    PROPERTIES INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+               INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE
+               INTERPROCEDURAL_OPTIMIZATION_MINSIZEREL TRUE
+  )
+endfunction()
+
 function(wirestead_configure_library_target target)
+  wirestead_enable_ipo(${target})
   target_link_libraries(${target} PUBLIC wirestead_dependencies)
   target_compile_features(${target} PUBLIC cxx_std_20)
   target_include_directories(

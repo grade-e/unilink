@@ -22,34 +22,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/cmake/WiresteadSources.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/WiresteadTargets.cmake)
 wirestead_add_library_targets()
 
-# Disable MSVC LTCG for wirestead libraries to avoid link.exe access violations.
-# This is a known workaround. Future investigation should aim to resolve the
-# underlying conflict that causes these violations when LTCG is enabled.
-if(MSVC)
-  foreach(_target IN LISTS WIRESTEAD_LIBRARY_TARGETS)
-    target_compile_options(
-      ${_target}
-      PRIVATE "$<$<CONFIG:Release>:/GL->" "$<$<CONFIG:RelWithDebInfo>:/GL->"
-              "$<$<CONFIG:MinSizeRel>:/GL->"
-    )
-    set_property(
-      TARGET ${_target}
-      APPEND_STRING
-      PROPERTY LINK_FLAGS_RELEASE " /LTCG:OFF"
-    )
-    set_property(
-      TARGET ${_target}
-      APPEND_STRING
-      PROPERTY LINK_FLAGS_RELWITHDEBINFO " /LTCG:OFF"
-    )
-    set_property(
-      TARGET ${_target}
-      APPEND_STRING
-      PROPERTY LINK_FLAGS_MINSIZEREL " /LTCG:OFF"
-    )
-  endforeach()
-endif()
-
 # Export header generation
 if(WIRESTEAD_ENABLE_EXPORT_HEADER)
   include(GenerateExportHeader)
