@@ -35,6 +35,9 @@ jobs:
           - os: macos-15
             compiler: clang
             triplet: arm64-osx
+          - os: windows-2022
+            compiler: msvc
+            triplet: x64-windows
     steps:
       - uses: actions/checkout@v7
 
@@ -61,11 +64,27 @@ jobs:
           echo "CXX=clang++" >> $GITHUB_ENV
 
       - name: Install dependencies with vcpkg
+        if: runner.os != 'Windows'
         uses: ./.github/actions/setup-vcpkg
         with:
           triplet: ${{ matrix.triplet }}
 
+      # The composite action bootstraps through bootstrap-vcpkg.sh, which the
+      # Windows runners cannot use. They ship vcpkg preinstalled, which the
+      # existing `windows` job in ci.yml already relies on.
+      - name: Install dependencies with vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          "/c/vcpkg/vcpkg.exe" install boost-asio:${{ matrix.triplet }} boost-system:${{ matrix.triplet }} spdlog:${{ matrix.triplet }}
+          {
+            echo "VCPKG_ROOT=C:/vcpkg"
+            echo "VCPKG_TARGET_TRIPLET=${{ matrix.triplet }}"
+            echo "CMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake"
+          } >> "$GITHUB_ENV"
+
       - name: Configure
+        if: runner.os != 'Windows'
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
@@ -78,17 +97,46 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
             -DVCPKG_TARGET_TRIPLET=$VCPKG_TARGET_TRIPLET
 
+      # Visual Studio is a multi-config generator, so the configuration is
+      # chosen at build and install time rather than at configure time.
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 \
+            -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/wirestead-install" \
+            -DWIRESTEAD_ENABLE_INSTALL=ON \
+            -DWIRESTEAD_ENABLE_EXPORT_HEADER=ON \
+            -DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE" \
+            -DVCPKG_TARGET_TRIPLET="$VCPKG_TARGET_TRIPLET"
+
       - name: Build
+        if: runner.os != 'Windows'
         run: cmake --build build --config Release -- -v
 
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cmake --build build --config Release
+
       - name: Install
+        if: runner.os != 'Windows'
         run: cmake --install build --prefix "$RUNNER_TEMP/wirestead-install"
+
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cmake --install build --config Release --prefix "$RUNNER_TEMP/wirestead-install"
 
       # Guards the export restriction in cmake/wirestead.map and wirestead.exp.
       # A wrong symbol pattern does not fail the link, it just exports nothing
       # or everything, and the unit tests cannot notice because they link the
       # static library. This is the only place that inspects the shared one.
+      # Skipped on Windows on purpose: DLL exports are opt-in through
+      # __declspec(dllexport), so a DLL cannot re-export what it links
+      # against, and there is no version script or symbols list to get wrong.
       - name: Verify shared library exports
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           set -euo pipefail
@@ -120,6 +168,7 @@ jobs:
           fi
 
       - name: Consume canonical package (find_package)
+        shell: bash
         run: |
           install_prefix="$RUNNER_TEMP/wirestead-install"
           mkdir -p "$RUNNER_TEMP/consumer" && cd "$RUNNER_TEMP/consumer"
@@ -144,14 +193,23 @@ jobs:
             return 0;
           }
           EOF
-          cmake -S . -B build -G Ninja \
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            generator=(-G "Visual Studio 17 2022" -A x64)
+            binary="./build/Release/consumer.exe"
+            export PATH="$install_prefix/bin:/c/vcpkg/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
+          else
+            generator=(-G Ninja)
+            binary="./build/consumer"
+          fi
+          cmake -S . -B build "${generator[@]}" \
             -DCMAKE_PREFIX_PATH="$install_prefix" \
             -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
             -DVCPKG_TARGET_TRIPLET=$VCPKG_TARGET_TRIPLET
           cmake --build build --config Release
-          ./build/consumer
+          "$binary"
 
       - name: Consume legacy package (find_package)
+        shell: bash
         run: |
           install_prefix="$RUNNER_TEMP/wirestead-install"
           mkdir -p "$RUNNER_TEMP/consumer-legacy" && cd "$RUNNER_TEMP/consumer-legacy"
@@ -176,14 +234,25 @@ jobs:
             return 0;
           }
           EOF
-          cmake -S . -B build -G Ninja \
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            generator=(-G "Visual Studio 17 2022" -A x64)
+            binary="./build/Release/legacy_consumer.exe"
+            export PATH="$install_prefix/bin:/c/vcpkg/installed/$VCPKG_TARGET_TRIPLET/bin:$PATH"
+          else
+            generator=(-G Ninja)
+            binary="./build/legacy_consumer"
+          fi
+          cmake -S . -B build "${generator[@]}" \
             -DCMAKE_PREFIX_PATH="$install_prefix" \
             -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
             -DVCPKG_TARGET_TRIPLET=$VCPKG_TARGET_TRIPLET
           cmake --build build --config Release
-          ./build/legacy_consumer
+          "$binary"
 
+      # pkg-config is not part of the MSVC consumption story, and the Windows
+      # runners have no pkg-config to test with.
       - name: Test pkg-config
+        if: runner.os != 'Windows'
         run: |
           # wirestead.pc and unilink.pc both need vcpkg's pkg-config modules
           # when dependencies such as spdlog are external.
