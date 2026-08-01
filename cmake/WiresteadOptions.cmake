@@ -87,6 +87,23 @@ option(WIRESTEAD_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(WIRESTEAD_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 
 option(WIRESTEAD_ENABLE_LTO "Enable Link Time Optimization" OFF)
+
+# Resolved once here so the target helpers can just read it. Asking the
+# toolchain beats guessing: it covers MSVC /GL plus /LTCG and GCC/Clang -flto
+# behind one property, and reports rather than fails when unavailable.
+set(WIRESTEAD_IPO_SUPPORTED OFF)
+if(WIRESTEAD_ENABLE_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(
+    RESULT WIRESTEAD_IPO_SUPPORTED OUTPUT _wirestead_ipo_error
+  )
+  if(NOT WIRESTEAD_IPO_SUPPORTED)
+    message(
+      WARNING "WIRESTEAD_ENABLE_LTO is ON but this toolchain does not support "
+              "interprocedural optimization: ${_wirestead_ipo_error}"
+    )
+  endif()
+endif()
 option(WIRESTEAD_ENABLE_PCH "Enable Precompiled Headers" OFF)
 
 foreach(_suffix IN LISTS _wirestead_option_suffixes)

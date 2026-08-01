@@ -53,17 +53,13 @@ if(MSVC)
 
   # MSVC-specific optimizations and debug information
   set(CMAKE_CXX_FLAGS_RELEASE
-      "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Ob2 /Oi /Ot /Oy /GL /wd4251 /wd4275"
+      "${CMAKE_CXX_FLAGS_RELEASE} /O2 /Ob2 /Oi /Ot /Oy /wd4251 /wd4275"
   )
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO
       "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /O2 /wd4251 /wd4275"
   )
   set(CMAKE_CXX_FLAGS_MINSIZEREL
       "${CMAKE_CXX_FLAGS_MINSIZEREL} /O1 /Os /wd4251 /wd4275"
-  )
-  set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /LTCG")
-  set(CMAKE_SHARED_LINKER_FLAGS_RELEASE
-      "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /LTCG"
   )
 
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -184,10 +180,6 @@ int main() {
   # Optimization flags
   if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-O3 -DNDEBUG)
-    if(WIRESTEAD_ENABLE_LTO)
-      add_compile_options(-flto)
-      add_link_options(-flto)
-    endif()
   elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-g -O0)
   endif()

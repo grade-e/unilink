@@ -19,6 +19,16 @@ and ABI policy.
 - Aligned the CMake project description with the GitHub repository
   description. This string is user-visible: it is carried into the CPack
   package metadata and the generated pkg-config description.
+- Drive link-time optimization through CMake's `INTERPROCEDURAL_OPTIMIZATION`
+  property instead of hand-written `/GL`, `/LTCG`, and `-flto` flags, applied
+  per library target and only to the optimized configurations.
+  `WIRESTEAD_ENABLE_LTO` now means the same thing on every compiler; it
+  previously gated `-flto` on GCC and Clang while MSVC received `/GL`
+  unconditionally in Release, so the option had no effect there.
+- Removed the MSVC workaround that forced `/GL-` and `/LTCG:OFF` onto the
+  library targets to avoid `link.exe` access violations. A CI run with the
+  override removed confirmed the underlying problem no longer reproduces, and
+  the flags it fought with are gone.
 - Documented that out-of-line functions declared in internal headers are not
   always exported from the shared library, so code calling them links against
   the static library but not the shared one. The documented public surface is
