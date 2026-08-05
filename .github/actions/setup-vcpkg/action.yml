@@ -104,7 +104,10 @@ runs:
         }
 
         if [ ! -d "${VCPKG_ROOT}/.git" ]; then
-          VCPKG_BASELINE_SHA="$(cat "${workspace}/VCPKG_BASELINE")"
+          # Checkout on Windows rewrites the file to CRLF, and $( ) strips only
+          # the trailing newline; git happens to tolerate the leftover CR in a
+          # refspec, but nothing else here should have to.
+          VCPKG_BASELINE_SHA="$(tr -d '\r' < "${workspace}/VCPKG_BASELINE")"
           git init "${VCPKG_ROOT}"
           git -C "${VCPKG_ROOT}" remote add origin https://github.com/microsoft/vcpkg.git
           retry "vcpkg fetch" git -C "${VCPKG_ROOT}" fetch --depth 1 origin "${VCPKG_BASELINE_SHA}"
