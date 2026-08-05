@@ -228,33 +228,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up vcpkg (x64)
-        if: matrix.cmake_arch == 'x64'
+      - name: Install tools
         shell: pwsh
-        run: |
-          choco install ninja --no-progress -y
-          $sha = (Get-Content VCPKG_BASELINE -Raw).Trim()
-          git init C:/vcpkg-pinned
-          git -C C:/vcpkg-pinned remote add origin https://github.com/microsoft/vcpkg.git
-          git -C C:/vcpkg-pinned fetch --depth 1 origin $sha
-          git -C C:/vcpkg-pinned checkout FETCH_HEAD
-          & "C:/vcpkg-pinned/bootstrap-vcpkg.bat"
-          & "C:/vcpkg-pinned/vcpkg.exe" install boost-asio:x64-windows boost-system:x64-windows spdlog:x64-windows
-          echo "VCPKG_ROOT=C:/vcpkg-pinned" >> $env:GITHUB_ENV
+        run: choco install ninja --no-progress -y
 
-      - name: Set up vcpkg (ARM64)
-        if: matrix.cmake_arch == 'ARM64'
-        shell: pwsh
-        run: |
-          choco install ninja --no-progress -y
-          $sha = (Get-Content VCPKG_BASELINE -Raw).Trim()
-          git init C:/vcpkg-arm
-          git -C C:/vcpkg-arm remote add origin https://github.com/microsoft/vcpkg.git
-          git -C C:/vcpkg-arm fetch --depth 1 origin $sha
-          git -C C:/vcpkg-arm checkout FETCH_HEAD
-          & "C:/vcpkg-arm/bootstrap-vcpkg.bat"
-          & "C:/vcpkg-arm/vcpkg.exe" install boost-asio:arm64-windows boost-system:arm64-windows spdlog:arm64-windows
-          echo "VCPKG_ROOT=C:/vcpkg-arm" >> $env:GITHUB_ENV
+      # A short root keeps the vcpkg buildtrees clear of the Windows path limit.
+      - name: Install dependencies with vcpkg
+        uses: ./.github/actions/setup-vcpkg
+        with:
+          triplet: ${{ matrix.triplet }}
+          vcpkg-root: C:/vcpkg-pinned
 
       - name: Configure
         shell: pwsh
