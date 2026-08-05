@@ -93,77 +93,17 @@ jobs:
             brew install ninja autoconf autoconf-archive automake libtool pkg-config llvm
           fi
 
-      - name: Install dependencies with vcpkg (Linux)
-        if: runner.os == 'Linux'
-        uses: ./.github/actions/setup-vcpkg
-        with:
-          triplet: ${{ matrix.triplet }}
-          packages: boost-asio boost-system spdlog
-
-      - name: Install dependencies with vcpkg (macOS)
-        if: runner.os == 'macOS'
+      # Windows resolves x64-windows-static-md from the checked-in overlay; the
+      # other triplets come from vcpkg's own set and ignore it.
+      - name: Install dependencies with vcpkg
         uses: ./.github/actions/setup-vcpkg
         env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
+          CC: ${{ runner.os != 'Windows' && matrix.cc || '' }}
+          CXX: ${{ runner.os != 'Windows' && matrix.cxx || '' }}
         with:
           triplet: ${{ matrix.triplet }}
           packages: boost-asio boost-system spdlog
-
-      - name: Clone vcpkg
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          sha="$(cat VCPKG_BASELINE)"
-          git init "${{ env.VCPKG_ROOT }}"
-          git -C "${{ env.VCPKG_ROOT }}" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "${{ env.VCPKG_ROOT }}" fetch --depth 1 origin "$sha"
-          git -C "${{ env.VCPKG_ROOT }}" checkout FETCH_HEAD
-
-      - name: Bootstrap vcpkg (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          & "${env:VCPKG_ROOT}\bootstrap-vcpkg.bat"
-
-      - name: Create Custom Triplet (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $tripletPath = Join-Path "${{ env.VCPKG_ROOT }}" "triplets/x64-windows-static-md.cmake"
-          Set-Content -Path $tripletPath -Value @"
-          set(VCPKG_TARGET_ARCHITECTURE x64)
-          set(VCPKG_CRT_LINKAGE dynamic)
-          set(VCPKG_LIBRARY_LINKAGE static)
-          "@
-          Write-Host "Created custom triplet at $tripletPath"
-          Get-Content $tripletPath
-
-      - name: Install Dependencies (vcpkg)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          VCPKG_EXE="${VCPKG_ROOT}/vcpkg.exe"
-
-          # Helper function for retrying commands
-          retry_command() {
-            local retries=3
-            local count=0
-            until "$@"; do
-              exit_code=$?
-              count=$((count + 1))
-              if [ $count -lt $retries ]; then
-                echo "Command failed with exit code $exit_code. Retrying ($count/$retries) in 10s..."
-                sleep 10
-              else
-                echo "Command failed with exit code $exit_code after $retries attempts."
-                return $exit_code
-              fi
-            done
-            return 0
-          }
-
-          retry_command "$VCPKG_EXE" install boost-system boost-asio spdlog --triplet ${{ matrix.triplet }}
+          overlay-triplets: .github/vcpkg-triplets
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'

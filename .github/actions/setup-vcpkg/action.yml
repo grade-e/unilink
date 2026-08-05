@@ -12,6 +12,10 @@ inputs:
     description: vcpkg checkout directory
     required: false
     default: ""
+  overlay-triplets:
+    description: Repo-relative directory of extra triplet definitions to pass to vcpkg
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -28,9 +32,19 @@ runs:
         else
           sha256() { shasum -a 256; }
         fi
+        # $CC pins the toolchain on Unix; on Windows it is not on PATH in a bash
+        # step, so ImageOS carries the runner image (and with it the MSVC version).
         cc_id="$( { "${CC:-cc}" --version 2>/dev/null || echo unknown-compiler; } | head -n 1 )"
-        fingerprint="$(printf '%s\n%s\n%s\n' \
-          "${cc_id}" '${{ inputs.triplet }}' '${{ inputs.packages }}' | sha256 | cut -c1-16)"
+        # Hashed here rather than with hashFiles() so that an empty input stays an
+        # empty string instead of becoming the pattern "/**".
+        overlay_dir='${{ inputs.overlay-triplets }}'
+        overlay_id=""
+        if [ -n "${overlay_dir}" ] && [ -d "${GITHUB_WORKSPACE//\\//}/${overlay_dir}" ]; then
+          overlay_id="$(cat "${GITHUB_WORKSPACE//\\//}/${overlay_dir}"/* | sha256 | cut -c1-16)"
+        fi
+        fingerprint="$(printf '%s\n%s\n%s\n%s\n%s\n' \
+          "${cc_id}" "${ImageOS:-}" '${{ inputs.triplet }}' '${{ inputs.packages }}' \
+          "${overlay_id}" | sha256 | cut -c1-16)"
         # The baseline is only in the key, not the prefix, so a baseline bump can
         # still reuse the archives of every port whose ABI did not actually move.
         prefix="vcpkg-${{ runner.os }}-${{ runner.arch }}-${fingerprint}-"
@@ -47,15 +61,32 @@ runs:
     - shell: bash
       run: |
         set -euo pipefail
+        # RUNNER_TEMP and GITHUB_WORKSPACE are Windows paths under Git Bash;
+        # forward slashes are accepted by both bash and vcpkg.exe, so normalising
+        # here keeps a single code path for all three operating systems.
+        runner_temp="${RUNNER_TEMP//\\//}"
+        workspace="${GITHUB_WORKSPACE//\\//}"
+
         # vcpkg's own x-gha backend was removed upstream, so binary caching runs
         # through the plain files provider pointed at the actions/cache path above.
-        VCPKG_DEFAULT_BINARY_CACHE="${RUNNER_TEMP}/vcpkg-archives"
+        VCPKG_DEFAULT_BINARY_CACHE="${runner_temp}/vcpkg-archives"
         export VCPKG_DEFAULT_BINARY_CACHE
         mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+
         VCPKG_ROOT="${{ inputs.vcpkg-root }}"
         if [ -z "${VCPKG_ROOT}" ]; then
-          VCPKG_ROOT="${GITHUB_WORKSPACE}/vcpkg"
+          VCPKG_ROOT="${workspace}/vcpkg"
         fi
+        VCPKG_ROOT="${VCPKG_ROOT//\\//}"
+
+        if [ "${RUNNER_OS}" = "Windows" ]; then
+          bootstrap="${VCPKG_ROOT}/bootstrap-vcpkg.bat"
+          vcpkg_exe="${VCPKG_ROOT}/vcpkg.exe"
+        else
+          bootstrap="${VCPKG_ROOT}/bootstrap-vcpkg.sh"
+          vcpkg_exe="${VCPKG_ROOT}/vcpkg"
+        fi
+
         retry() {
           local what="$1"
           shift
@@ -71,13 +102,18 @@ runs:
             sleep $((attempt * 10))
           done
         }
+
         if [ ! -d "${VCPKG_ROOT}/.git" ]; then
-          VCPKG_BASELINE_SHA="$(cat "${GITHUB_WORKSPACE}/VCPKG_BASELINE")"
+          # Checkout on Windows rewrites the file to CRLF, and $( ) strips only
+          # the trailing newline; git happens to tolerate the leftover CR in a
+          # refspec, but nothing else here should have to.
+          VCPKG_BASELINE_SHA="$(tr -d '\r' < "${workspace}/VCPKG_BASELINE")"
           git init "${VCPKG_ROOT}"
           git -C "${VCPKG_ROOT}" remote add origin https://github.com/microsoft/vcpkg.git
-          git -C "${VCPKG_ROOT}" fetch --depth 1 origin "${VCPKG_BASELINE_SHA}"
+          retry "vcpkg fetch" git -C "${VCPKG_ROOT}" fetch --depth 1 origin "${VCPKG_BASELINE_SHA}"
           git -C "${VCPKG_ROOT}" checkout FETCH_HEAD
         fi
+
         # vcpkg's SBOM scripts need the CMake version vcpkg itself pins (4.x uses
         # string(JSON ... STRING_ENCODE), which the apt CMake 3.28 does not have).
         # On x64 vcpkg acquires that CMake itself; on arm64-linux it silently falls
@@ -91,8 +127,8 @@ runs:
           CMAKE_SHA512="$(jq -r "${CMAKE_ENTRY} | .sha512 // empty" "${TOOLS_JSON}")"
           CMAKE_EXE="$(jq -r "${CMAKE_ENTRY} | .executable // empty" "${TOOLS_JSON}")"
           if [ -n "${CMAKE_URL}" ] && [ -n "${CMAKE_SHA512}" ] && [ -n "${CMAKE_EXE}" ]; then
-            CMAKE_DIR="${RUNNER_TEMP}/vcpkg-cmake"
-            CMAKE_ARCHIVE="${RUNNER_TEMP}/$(basename "${CMAKE_URL}")"
+            CMAKE_DIR="${runner_temp}/vcpkg-cmake"
+            CMAKE_ARCHIVE="${runner_temp}/$(basename "${CMAKE_URL}")"
             mkdir -p "${CMAKE_DIR}"
             retry "cmake download" curl -fsSL "${CMAKE_URL}" -o "${CMAKE_ARCHIVE}"
             echo "${CMAKE_SHA512}  ${CMAKE_ARCHIVE}" | sha512sum -c -
@@ -104,9 +140,18 @@ runs:
             echo "no linux/arm64 cmake entry in ${TOOLS_JSON}; using the system cmake"
           fi
         fi
-        retry "vcpkg bootstrap" "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+
+        overlay_args=()
+        if [ -n '${{ inputs.overlay-triplets }}' ]; then
+          overlay_args=(--overlay-triplets="${workspace}/${{ inputs.overlay-triplets }}")
+        fi
+
+        retry "vcpkg bootstrap" "${bootstrap}" -disableMetrics
+        # macOS runners still ship bash 3.2, where "${arr[@]}" on an empty array
+        # trips set -u; the +expansion form is the portable way to pass no args.
         retry "vcpkg install" \
-          "${VCPKG_ROOT}/vcpkg" install ${{ inputs.packages }} --triplet "${{ inputs.triplet }}" --clean-after-build
+          "${vcpkg_exe}" install ${{ inputs.packages }} --triplet "${{ inputs.triplet }}" \
+          ${overlay_args[@]+"${overlay_args[@]}"} --clean-after-build
         {
           echo "VCPKG_ROOT=${VCPKG_ROOT}"
           echo "VCPKG_TARGET_TRIPLET=${{ inputs.triplet }}"
