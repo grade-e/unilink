@@ -15,9 +15,43 @@ inputs:
 runs:
   using: composite
   steps:
+    - id: cache-key
+      shell: bash
+      run: |
+        set -euo pipefail
+        # vcpkg names each archive after a package ABI hash that folds in the
+        # compiler, so jobs on different compilers share no archives at all. Cache
+        # keys are write-once, so one key spanning compilers would let whichever
+        # job saves first lock every other compiler out of caching anything.
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256() { sha256sum; }
+        else
+          sha256() { shasum -a 256; }
+        fi
+        cc_id="$( { "${CC:-cc}" --version 2>/dev/null || echo unknown-compiler; } | head -n 1 )"
+        fingerprint="$(printf '%s\n%s\n%s\n' \
+          "${cc_id}" '${{ inputs.triplet }}' '${{ inputs.packages }}' | sha256 | cut -c1-16)"
+        # The baseline is only in the key, not the prefix, so a baseline bump can
+        # still reuse the archives of every port whose ABI did not actually move.
+        prefix="vcpkg-${{ runner.os }}-${{ runner.arch }}-${fingerprint}-"
+        echo "prefix=${prefix}" >> "${GITHUB_OUTPUT}"
+        echo "key=${prefix}${{ hashFiles('VCPKG_BASELINE') }}" >> "${GITHUB_OUTPUT}"
+
+    - name: Restore the vcpkg binary cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ runner.temp }}/vcpkg-archives
+        key: ${{ steps.cache-key.outputs.key }}
+        restore-keys: ${{ steps.cache-key.outputs.prefix }}
+
     - shell: bash
       run: |
         set -euo pipefail
+        # vcpkg's own x-gha backend was removed upstream, so binary caching runs
+        # through the plain files provider pointed at the actions/cache path above.
+        VCPKG_DEFAULT_BINARY_CACHE="${RUNNER_TEMP}/vcpkg-archives"
+        export VCPKG_DEFAULT_BINARY_CACHE
+        mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
         VCPKG_ROOT="${{ inputs.vcpkg-root }}"
         if [ -z "${VCPKG_ROOT}" ]; then
           VCPKG_ROOT="${GITHUB_WORKSPACE}/vcpkg"
@@ -77,5 +111,5 @@ runs:
           echo "VCPKG_ROOT=${VCPKG_ROOT}"
           echo "VCPKG_TARGET_TRIPLET=${{ inputs.triplet }}"
           echo "CMAKE_TOOLCHAIN_FILE=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-          echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=${VCPKG_DEFAULT_BINARY_CACHE}"
         } >> "$GITHUB_ENV"

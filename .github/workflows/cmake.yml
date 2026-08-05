@@ -69,20 +69,12 @@ jobs:
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_TARGET_TRIPLET: ${{ matrix.triplet }}
-      VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
       BUILD_TYPE: ${{ matrix.build_type }}
       VCPKG_USE_SYSTEM_BINARIES: "1"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      - name: Export GitHub Actions Cache Environment Variables
-        uses: actions/github-script@v9
-        with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Install Build Dependencies (Linux/macOS)
         if: runner.os != 'Windows'
