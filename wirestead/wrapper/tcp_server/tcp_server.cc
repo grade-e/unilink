@@ -76,13 +76,16 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
 
   ConnectionHandler on_client_connect_{nullptr};
   ConnectionHandler on_disconnect_{nullptr};
-  MessageHandler on_data_{nullptr};
-  BatchMessageHandler data_batch_handler_{nullptr};
+  // Shared snapshots: the io thread copies one out per received chunk, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> on_data_;
+  interface::SharedCallback<BatchMessageHandler> data_batch_handler_;
   ErrorHandler on_error_{nullptr};
   std::function<void(size_t)> on_backpressure_{nullptr};
   FramerFactory framer_factory_{nullptr};
-  MessageHandler on_message_{nullptr};
-  BatchMessageHandler message_batch_handler_{nullptr};
+  interface::SharedCallback<MessageHandler> on_message_;
+  interface::SharedCallback<BatchMessageHandler> message_batch_handler_;
 
   // Batching logic
   std::vector<MessageContext> data_batch_queue_;
@@ -421,7 +424,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
                 // #441: snapshot under a shared_lock (pure read), build the
                 // copy before taking the exclusive lock for queue mutation.
                 bool batch_mode;
-                MessageHandler on_message_handler;
+                interface::SharedCallback<MessageHandler> on_message_handler;
                 {
                   std::shared_lock<std::shared_mutex> lock(mutex_);
                   batch_mode = static_cast<bool>(message_batch_handler_);
@@ -430,7 +433,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
 
                 if (batch_mode) {
                   MessageContext ctx(id, memory::SafeDataBuffer(msg));
-                  BatchMessageHandler flush_handler;
+                  interface::SharedCallback<BatchMessageHandler> flush_handler;
                   std::vector<MessageContext> batch;
                   {
                     std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -472,7 +475,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
         // locking level so it no longer blocks concurrent sends even
         // briefly.
         bool batch_mode;
-        MessageHandler handler;
+        interface::SharedCallback<MessageHandler> handler;
         std::shared_ptr<framer::IFramer> framer;
         {
           std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -489,7 +492,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
           // lock is only held for the queue mutation itself, not the
           // allocation.
           MessageContext ctx(id, memory::SafeDataBuffer(data_span));
-          BatchMessageHandler flush_handler;
+          interface::SharedCallback<BatchMessageHandler> flush_handler;
           std::vector<MessageContext> batch;
           {
             std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -624,12 +627,12 @@ TcpServer& TcpServer::on_disconnect(ConnectionHandler h) {
 }
 TcpServer& TcpServer::on_data(MessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->on_data_ = std::move(h);
+  impl_->on_data_ = interface::share_callback(std::move(h));
   return *this;
 }
 TcpServer& TcpServer::on_data_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_batch_handler_ = std::move(h);
+  impl_->data_batch_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 TcpServer& TcpServer::on_error(ErrorHandler h) {
@@ -652,13 +655,13 @@ TcpServer& TcpServer::framer(FramerFactory factory) {
 
 TcpServer& TcpServer::on_message(MessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->on_message_ = std::move(handler);
+  impl_->on_message_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
 TcpServer& TcpServer::on_message_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->message_batch_handler_ = std::move(h);
+  impl_->message_batch_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 

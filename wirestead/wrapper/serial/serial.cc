@@ -64,14 +64,17 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
   std::shared_ptr<bool> alive_marker_{std::make_shared<bool>(true)};
 
   // Event handlers (Context based)
-  MessageHandler data_handler{nullptr};
-  BatchMessageHandler data_batch_handler_{nullptr};
+  // Shared snapshots: the strand copies one out per received chunk, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> data_handler;
+  interface::SharedCallback<BatchMessageHandler> data_batch_handler_;
   ConnectionHandler connect_handler{nullptr};
   ConnectionHandler disconnect_handler{nullptr};
   ErrorHandler error_handler{nullptr};
   std::function<void(size_t)> bp_handler{nullptr};
-  MessageHandler message_handler{nullptr};
-  BatchMessageHandler message_batch_handler_{nullptr};
+  interface::SharedCallback<MessageHandler> message_handler;
+  interface::SharedCallback<BatchMessageHandler> message_batch_handler_;
 
   std::shared_ptr<framer::IFramer> framer{nullptr};
 
@@ -424,7 +427,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
       // unique_lock) - this is a pure read, matching try_send's locking
       // level so it no longer blocks concurrent sends even briefly.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       std::shared_ptr<framer::IFramer> framer_to_push;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -438,7 +441,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
         // lock is only held for the queue mutation itself, not the
         // allocation.
         MessageContext ctx(0, memory::SafeDataBuffer(data));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -522,7 +525,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
       // #441: snapshot under a shared_lock (pure read), build the copy
       // before taking the exclusive lock for queue mutation.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         batch_mode = static_cast<bool>(message_batch_handler_);
@@ -531,7 +534,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
 
       if (batch_mode) {
         MessageContext ctx(0, memory::SafeDataBuffer(msg));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -560,13 +563,13 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
 
   void on_message(MessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_handler = std::move(handler);
+    message_handler = interface::share_callback(std::move(handler));
     if (framer) attach_framer_callback();
   }
 
   void on_message_batch(BatchMessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_batch_handler_ = std::move(handler);
+    message_batch_handler_ = interface::share_callback(std::move(handler));
     if (framer) attach_framer_callback();
   }
 
@@ -637,12 +640,12 @@ void Serial::reset_stats() { impl_->reset_stats(); }
 
 Serial& Serial::on_data(MessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_handler = std::move(h);
+  impl_->data_handler = interface::share_callback(std::move(h));
   return *this;
 }
 Serial& Serial::on_data_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_batch_handler_ = std::move(h);
+  impl_->data_batch_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 Serial& Serial::on_connect(ConnectionHandler h) {

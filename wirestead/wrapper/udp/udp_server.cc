@@ -93,13 +93,16 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
 
   ConnectionHandler on_connect{nullptr};
   ConnectionHandler on_disconnect{nullptr};
-  MessageHandler on_data{nullptr};
-  BatchMessageHandler on_data_batch_{nullptr};
+  // Shared snapshots: the strand copies one out per received datagram, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> on_data;
+  interface::SharedCallback<BatchMessageHandler> on_data_batch_;
   ErrorHandler on_error{nullptr};
   std::function<void(size_t)> bp_handler{nullptr};
   FramerFactory framer_factory{nullptr};
-  MessageHandler on_message{nullptr};
-  BatchMessageHandler on_message_batch_{nullptr};
+  interface::SharedCallback<MessageHandler> on_message;
+  interface::SharedCallback<BatchMessageHandler> on_message_batch_;
 
   std::shared_ptr<bool> is_alive{std::make_shared<bool>(true)};
 
@@ -279,7 +282,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
                 // #441: snapshot under a shared_lock (pure read), build the
                 // copy before taking the exclusive lock for queue mutation.
                 bool batch_mode;
-                MessageHandler on_message_handler;
+                interface::SharedCallback<MessageHandler> on_message_handler;
                 {
                   std::shared_lock<std::shared_mutex> lock(mutex);
                   batch_mode = static_cast<bool>(on_message_batch_);
@@ -288,7 +291,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
 
                 if (batch_mode) {
                   MessageContext ctx(client_id, memory::SafeDataBuffer(msg));
-                  BatchMessageHandler flush_handler;
+                  interface::SharedCallback<BatchMessageHandler> flush_handler;
                   std::vector<MessageContext> batch;
                   {
                     std::unique_lock<std::shared_mutex> lock(mutex);
@@ -330,7 +333,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
         // this is a pure read, matching try_send's locking level so it no
         // longer blocks concurrent sends even briefly.
         bool batch_mode;
-        MessageHandler data_handler_copy;
+        interface::SharedCallback<MessageHandler> data_handler_copy;
         {
           std::shared_lock<std::shared_mutex> lock(mutex);
           batch_mode = static_cast<bool>(on_data_batch_);
@@ -342,7 +345,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
           // lock is only held for the queue mutation itself, not the
           // allocation.
           MessageContext ctx(client_id, memory::SafeDataBuffer(data));
-          BatchMessageHandler flush_handler;
+          interface::SharedCallback<BatchMessageHandler> flush_handler;
           std::vector<MessageContext> batch;
           {
             std::unique_lock<std::shared_mutex> lock(mutex);
@@ -652,13 +655,13 @@ UdpServer& UdpServer::on_disconnect(ConnectionHandler h) {
 
 UdpServer& UdpServer::on_data(MessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex);
-  impl_->on_data = std::move(h);
+  impl_->on_data = interface::share_callback(std::move(h));
   return *this;
 }
 
 UdpServer& UdpServer::on_data_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex);
-  impl_->on_data_batch_ = std::move(h);
+  impl_->on_data_batch_ = interface::share_callback(std::move(h));
   return *this;
 }
 
@@ -676,13 +679,13 @@ UdpServer& UdpServer::framer(FramerFactory factory) {
 
 UdpServer& UdpServer::on_message(MessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex);
-  impl_->on_message = std::move(h);
+  impl_->on_message = interface::share_callback(std::move(h));
   return *this;
 }
 
 UdpServer& UdpServer::on_message_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex);
-  impl_->on_message_batch_ = std::move(h);
+  impl_->on_message_batch_ = interface::share_callback(std::move(h));
   return *this;
 }
 
