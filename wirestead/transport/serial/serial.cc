@@ -108,9 +108,12 @@ struct Serial::Impl {
   // and the strand-confined read sites both take this lock; readers copy
   // the callback under lock then invoke the copy outside the lock (#436).
   mutable std::mutex callback_mtx_;
-  OnBytes on_bytes_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots: the strand copies one out per received chunk, and a
+  // std::function copy allocates whenever the target outgrows its small-object
+  // buffer. See interface::SharedCallback.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
 
   std::atomic<bool> opened_{false};
   AtomicLinkState state_{LinkState::Idle};
@@ -320,14 +323,14 @@ struct Serial::Impl {
             return;
           }
           if (n > 0) impl->stats_.record_received(n);
-          OnBytes on_bytes;
+          interface::SharedCallback<OnBytes> on_bytes;
           {
             std::lock_guard<std::mutex> lock(impl->callback_mtx_);
             on_bytes = impl->on_bytes_;
           }
           if (on_bytes) {
             try {
-              on_bytes(memory::ConstByteSpan(impl->rx_.data(), n));
+              (*on_bytes)(memory::ConstByteSpan(impl->rx_.data(), n));
             } catch (const std::exception& e) {
               std::string msg = fmt::format("Exception in callback: {}", e.what());
               WIRESTEAD_LOG_ERROR("serial", "on_bytes", msg);
@@ -492,14 +495,14 @@ struct Serial::Impl {
 
   void notify_state() {
     if (stopping_.load()) return;
-    OnState on_state;
+    interface::SharedCallback<OnState> on_state;
     {
       std::lock_guard<std::mutex> lock(callback_mtx_);
       on_state = on_state_;
     }
     if (!on_state) return;
     try {
-      on_state(state_.get());
+      (*on_state)(state_.get());
     } catch (...) {
     }
   }
@@ -516,15 +519,16 @@ struct Serial::Impl {
     if (stopping_.load()) return;
     observe_queue();
 
-    OnBackpressure on_bp;
+    interface::SharedCallback<OnBackpressure> on_bp;
     {
       std::lock_guard<std::mutex> lock(callback_mtx_);
       on_bp = on_bp_;
     }
+    static const OnBackpressure kNoCallback;
 
     auto f = bp_fields();
     queue_util::report_backpressure(
-        f, qb, on_bp, stats_,
+        f, qb, on_bp ? *on_bp : kNoCallback, stats_,
         [&]() -> size_t {
           const size_t moved = pending_bytes_.exchange(0);
           while (!pending_.empty()) {
@@ -849,16 +853,19 @@ bool Serial::async_try_write_shared(std::shared_ptr<const std::vector<uint8_t>> 
 }
 
 void Serial::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 void Serial::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 void Serial::on_backpressure(OnBackpressure cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bp_ = std::move(cb);
+  impl_->on_bp_ = std::move(shared);
 }
 
 void Serial::set_backpressure_strategy(base::constants::BackpressureStrategy strategy) {

@@ -69,11 +69,15 @@ struct TcpServer::Impl {
   config::TcpServerConfig cfg_;
 
   concurrency::AtomicLinkState state_{base::LinkState::Idle};
-  OnBytes on_bytes_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots for the handlers the io thread copies out per received
+  // chunk - a std::function copy allocates whenever the target outgrows its
+  // small-object buffer. See interface::SharedCallback. The connect/disconnect
+  // handlers below stay plain: they fire once per connection, not per chunk.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
   MultiClientConnectHandler on_multi_connect_;
-  MultiClientDataHandler on_multi_data_;
+  interface::SharedCallback<MultiClientDataHandler> on_multi_data_;
   MultiClientDisconnectHandler on_multi_disconnect_;
   diagnostics::RuntimeStatsCounters stats_;
 
@@ -139,14 +143,14 @@ struct TcpServer::Impl {
 
   void notify_state() {
     if (stopping_.load()) return;
-    OnState cb;
+    interface::SharedCallback<OnState> cb;
     try {
       {
         std::lock_guard<std::mutex> lock(sessions_mutex_);
         cb = on_state_;
       }
       if (cb) {
-        cb(state_.get());
+        (*cb)(state_.get());
       }
     } catch (...) {
     }
@@ -331,25 +335,25 @@ struct TcpServer::Impl {
         if (!shared_self) return;
         auto* bytes_impl = shared_self->get_impl();
 
-        OnBytes cb;
-        MultiClientDataHandler multi_cb;
+        interface::SharedCallback<OnBytes> cb;
+        interface::SharedCallback<MultiClientDataHandler> multi_cb;
         {
           std::lock_guard<std::mutex> lock(bytes_impl->sessions_mutex_);
           cb = bytes_impl->on_bytes_;
           multi_cb = bytes_impl->on_multi_data_;
         }
-        if (cb) cb(data);
+        if (cb) (*cb)(data);
         if (multi_cb) {
-          multi_cb(client_id, data);
+          (*multi_cb)(client_id, data);
         }
       });
 
-      OnBackpressure bp_cb;
+      interface::SharedCallback<OnBackpressure> bp_cb;
       {
         std::lock_guard<std::mutex> lock(accept_impl->sessions_mutex_);
         bp_cb = accept_impl->on_bp_;
       }
-      if (bp_cb) new_session->on_backpressure(bp_cb);
+      if (bp_cb) new_session->on_backpressure(*bp_cb);
 
       new_session->on_close([weak_self, client_id, new_session] {
         auto shared_self = weak_self.lock();
@@ -769,26 +773,31 @@ bool TcpServer::async_try_write_shared(std::shared_ptr<const std::vector<uint8_t
   return false;
 }
 
+// Each setter builds the shared snapshot before taking the lock, so the
+// allocation stays outside the critical section the io thread contends on.
 void TcpServer::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 void TcpServer::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 void TcpServer::on_backpressure(OnBackpressure cb) {
   auto impl = get_impl();
+  auto shared = interface::share_callback(std::move(cb));
   std::shared_ptr<TcpServerSession> session;
-  OnBackpressure bp_cb;
+  interface::SharedCallback<OnBackpressure> bp_cb;
   {
     std::lock_guard<std::mutex> lock(impl->sessions_mutex_);
-    impl->on_bp_ = std::move(cb);
+    impl->on_bp_ = std::move(shared);
     bp_cb = impl->on_bp_;
     session = impl->current_session_;
   }
 
-  if (session) session->on_backpressure(bp_cb);
+  if (session) session->on_backpressure(bp_cb ? *bp_cb : OnBackpressure{});
 }
 
 bool TcpServer::broadcast(std::string_view message) {
@@ -881,8 +890,9 @@ void TcpServer::on_multi_connect(MultiClientConnectHandler h) {
   impl_->on_multi_connect_ = std::move(h);
 }
 void TcpServer::on_multi_data(MultiClientDataHandler h) {
+  auto shared = interface::share_callback(std::move(h));
   std::lock_guard<std::mutex> l(impl_->sessions_mutex_);
-  impl_->on_multi_data_ = std::move(h);
+  impl_->on_multi_data_ = std::move(shared);
 }
 void TcpServer::on_multi_disconnect(MultiClientDisconnectHandler h) {
   std::lock_guard<std::mutex> l(impl_->sessions_mutex_);

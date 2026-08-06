@@ -115,10 +115,13 @@ struct UdpChannel::Impl {
   // outside the lock, matching the pattern already used correctly by
   // TcpClient/UdsClient/both servers (see #436).
   mutable std::mutex callback_mtx_;
-  OnBytes on_bytes_;
-  UdpChannel::OnBytesFrom on_bytes_from_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots: the strand copies one out per received datagram, and a
+  // std::function copy allocates whenever the target outgrows its small-object
+  // buffer. See interface::SharedCallback.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<UdpChannel::OnBytesFrom> on_bytes_from_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
 
   ErrorInfoHolder error_info_holder_{"udp"};
 
@@ -307,8 +310,8 @@ struct UdpChannel::Impl {
 
     if (bytes > 0) {
       stats_.record_received(bytes);
-      OnBytes on_bytes;
-      UdpChannel::OnBytesFrom on_bytes_from;
+      interface::SharedCallback<OnBytes> on_bytes;
+      interface::SharedCallback<UdpChannel::OnBytesFrom> on_bytes_from;
       {
         std::lock_guard<std::mutex> lock(callback_mtx_);
         on_bytes = on_bytes_;
@@ -316,7 +319,7 @@ struct UdpChannel::Impl {
       }
       if (on_bytes && from_established_remote) {
         try {
-          on_bytes(memory::ConstByteSpan(rx_.data(), bytes));
+          (*on_bytes)(memory::ConstByteSpan(rx_.data(), bytes));
         } catch (const std::exception& e) {
           std::string msg = fmt::format("Exception in bytes callback: {}", e.what());
           WIRESTEAD_LOG_ERROR("udp", "on_bytes", msg);
@@ -335,7 +338,7 @@ struct UdpChannel::Impl {
 
       if (on_bytes_from) {
         try {
-          on_bytes_from(memory::ConstByteSpan(rx_.data(), bytes), recv_endpoint_);
+          (*on_bytes_from)(memory::ConstByteSpan(rx_.data(), bytes), recv_endpoint_);
         } catch (const std::exception& e) {
           std::string msg = fmt::format("Exception in bytes callback: {}", e.what());
           WIRESTEAD_LOG_ERROR("udp", "on_bytes_from", msg);
@@ -373,13 +376,14 @@ struct UdpChannel::Impl {
   // which would leave a Reliable-mode sender blocked in send_blocking()'s bp_cv_ wait forever
   // since nothing will ever call do_write() again once the channel has stopped/errored (#427).
   void drain_queue_and_clear_backpressure() {
-    OnBackpressure on_bp;
+    interface::SharedCallback<OnBackpressure> on_bp;
     {
       std::lock_guard<std::mutex> lock(callback_mtx_);
       on_bp = on_bp_;
     }
+    static const OnBackpressure kNoCallback;
     auto f = bp_fields();
-    queue_util::drain_and_clear_backpressure(f, on_bp, [&]() {
+    queue_util::drain_and_clear_backpressure(f, on_bp ? *on_bp : kNoCallback, [&]() {
       tx_.clear();
       queue_bytes_ = 0;
       pending_.clear();
@@ -489,14 +493,14 @@ struct UdpChannel::Impl {
   }
 
   void notify_state() {
-    OnState on_state;
+    interface::SharedCallback<OnState> on_state;
     {
       std::lock_guard<std::mutex> lock(callback_mtx_);
       on_state = on_state_;
     }
     if (!on_state) return;
     try {
-      on_state(state_.get());
+      (*on_state)(state_.get());
     } catch (const std::exception& e) {
       WIRESTEAD_LOG_ERROR("udp", "on_state", fmt::format("Exception in state callback: {}", e.what()));
     } catch (...) {
@@ -508,15 +512,16 @@ struct UdpChannel::Impl {
     if (stop_requested_.load()) return;
     observe_queue();
 
-    OnBackpressure on_bp;
+    interface::SharedCallback<OnBackpressure> on_bp;
     {
       std::lock_guard<std::mutex> lock(callback_mtx_);
       on_bp = on_bp_;
     }
+    static const OnBackpressure kNoCallback;
 
     auto f = bp_fields();
     queue_util::report_backpressure(
-        f, queued_bytes, on_bp, stats_,
+        f, queued_bytes, on_bp ? *on_bp : kNoCallback, stats_,
         [&]() -> size_t {
           // Flush pending_ → tx_
           const size_t moved = pending_bytes_.exchange(0);
@@ -631,13 +636,14 @@ struct UdpChannel::Impl {
     try {
       close_socket();
       writing_ = false;
-      OnBackpressure on_bp;
+      interface::SharedCallback<OnBackpressure> on_bp;
       {
         std::lock_guard<std::mutex> lock(callback_mtx_);
         on_bp = on_bp_;
       }
+      static const OnBackpressure kNoCallback;
       auto f = bp_fields();
-      queue_util::drain_and_clear_backpressure(f, on_bp, [&]() {
+      queue_util::drain_and_clear_backpressure(f, on_bp ? *on_bp : kNoCallback, [&]() {
         tx_.clear();
         queue_bytes_ = 0;
         pending_.clear();
@@ -1043,18 +1049,21 @@ bool UdpChannel::async_try_write_shared(std::shared_ptr<const std::vector<uint8_
 }
 
 void UdpChannel::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 
 void UdpChannel::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 
 void UdpChannel::on_backpressure(OnBackpressure cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bp_ = std::move(cb);
+  impl_->on_bp_ = std::move(shared);
 }
 
 void UdpChannel::set_backpressure_strategy(base::constants::BackpressureStrategy strategy) {
@@ -1165,7 +1174,14 @@ bool UdpChannel::async_try_write_to(memory::ConstByteSpan data, const boost::asi
   return true;
 }
 
-void UdpChannel::on_bytes_from(OnBytesFrom cb) { impl_->on_bytes_from_ = std::move(cb); }
+// Takes callback_mtx_ like every other setter here. It previously assigned
+// without the lock while the strand-confined read site took it, which raced
+// against a concurrent on_bytes_from() replacement.
+void UdpChannel::on_bytes_from(OnBytesFrom cb) {
+  auto shared = interface::share_callback(std::move(cb));
+  std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
+  impl_->on_bytes_from_ = std::move(shared);
+}
 
 boost::asio::ip::udp::endpoint UdpChannel::local_endpoint() const { return get_impl()->local_endpoint_; }
 

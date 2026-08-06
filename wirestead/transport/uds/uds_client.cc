@@ -103,9 +103,12 @@ struct UdsClient::Impl {
   std::atomic<bool> backpressure_active_{false};
   diagnostics::RuntimeStatsCounters stats_;
 
-  OnBytes on_bytes_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots: the io thread copies one out per received chunk, and a
+  // std::function copy allocates whenever the target outgrows its small-object
+  // buffer. See interface::SharedCallback.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
   mutable std::mutex callback_mtx_;
   std::atomic<bool> connected_{false};
   AtomicLinkState state_{LinkState::Idle};
@@ -467,18 +470,21 @@ bool UdsClient::async_try_write_shared(std::shared_ptr<const std::vector<uint8_t
 }
 
 void UdsClient::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 
 void UdsClient::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 
 void UdsClient::on_backpressure(OnBackpressure cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bp_ = std::move(cb);
+  impl_->on_bp_ = std::move(shared);
 }
 
 void UdsClient::set_backpressure_strategy(base::constants::BackpressureStrategy strategy) {
@@ -617,13 +623,13 @@ void UdsClient::Impl::start_read(std::shared_ptr<UdsClient> self, uint64_t seq) 
                                return;
                              }
 
-                             OnBytes cb;
+                             interface::SharedCallback<OnBytes> cb;
                              {
                                std::lock_guard<std::mutex> lock(self->impl_->callback_mtx_);
                                cb = self->impl_->on_bytes_;
                              }
                              if (bytes > 0) self->impl_->stats_.record_received(bytes);
-                             if (cb) cb(memory::ConstByteSpan(self->impl_->rx_.data(), bytes));
+                             if (cb) (*cb)(memory::ConstByteSpan(self->impl_->rx_.data(), bytes));
                              self->impl_->start_read(self, seq);
                            }));
 }
@@ -697,12 +703,12 @@ void UdsClient::Impl::handle_close(std::shared_ptr<UdsClient> self, uint64_t seq
 
 void UdsClient::Impl::transition_to(LinkState next, const boost::system::error_code&) {
   state_.set(next);
-  OnState cb;
+  interface::SharedCallback<OnState> cb;
   {
     std::lock_guard<std::mutex> lock(callback_mtx_);
     cb = on_state_;
   }
-  if (cb) cb(next);
+  if (cb) (*cb)(next);
 }
 
 void UdsClient::Impl::perform_stop_cleanup(uint64_t seq) {
@@ -790,15 +796,16 @@ void UdsClient::Impl::report_backpressure(std::shared_ptr<UdsClient> self, size_
   if (stop_requested_.load() || stopping_.load()) return;
   observe_queue();
 
-  OnBackpressure on_bp;
+  interface::SharedCallback<OnBackpressure> on_bp;
   {
     std::lock_guard<std::mutex> lock(callback_mtx_);
     on_bp = on_bp_;
   }
+  static const OnBackpressure kNoCallback;
 
   auto f = bp_fields();
   queue_util::report_backpressure(
-      f, queued_bytes, on_bp, stats_,
+      f, queued_bytes, on_bp ? *on_bp : kNoCallback, stats_,
       [&]() -> size_t {
         const size_t moved = pending_bytes_.exchange(0);
         while (!pending_.empty()) {

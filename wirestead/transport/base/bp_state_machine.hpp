@@ -102,7 +102,8 @@ inline EnqueueDecision decide_enqueue(BackpressureFields& f, size_t added, Deque
 // bytes moved; `kick_write` is called if the OFF transition leaves anything
 // in tx_ and nothing is currently being written.
 template <typename FlushFn, typename KickFn>
-inline void report_backpressure(BackpressureFields& f, size_t queued_bytes, interface::Channel::OnBackpressure& on_bp,
+inline void report_backpressure(BackpressureFields& f, size_t queued_bytes,
+                                const interface::Channel::OnBackpressure& on_bp,
                                 diagnostics::RuntimeStatsCounters& stats, FlushFn&& flush_pending_into_tx,
                                 KickFn&& kick_write) {
   if (!f.backpressure_active.load(std::memory_order_relaxed) && queued_bytes >= f.bp_high) {
@@ -154,7 +155,7 @@ inline void report_backpressure(BackpressureFields& f, size_t queued_bytes, inte
 // do_write() again (jwsung91/wirestead#427, #452). `clear_queues` must clear
 // every transport-specific queue (tx_, pending_, and their byte counters).
 template <typename ClearFn>
-inline void drain_and_clear_backpressure(BackpressureFields& f, interface::Channel::OnBackpressure& on_bp,
+inline void drain_and_clear_backpressure(BackpressureFields& f, const interface::Channel::OnBackpressure& on_bp,
                                          ClearFn&& clear_queues) {
   clear_queues();
   const bool had_backpressure = f.backpressure_active.load(std::memory_order_relaxed);
