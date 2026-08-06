@@ -1,0 +1,5 @@
+# VCPKG_BASELINE holds a bare git SHA that shell steps read and hand straight to
+# git. Without this, checkout on Windows rewrites it to CRLF, $( ) keeps the
+# trailing CR, and every consumer has to strip it. Pin the working-tree ending so
+# the file is byte-identical on every platform.
+VCPKG_BASELINE text eol=lf
