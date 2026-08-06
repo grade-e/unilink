@@ -371,8 +371,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
           }
           detail::invoke_user_callback("uds_server", "on_data_batch", flush_handler, batch);
         } else {
-          detail::invoke_user_callback("uds_server", "on_data", handler,
-                                       MessageContext(id, memory::SafeDataBuffer(data_span)));
+          detail::invoke_user_callback("uds_server", "on_data", handler, MessageContext(id, data_span));
         }
 
         if (framer_to_push) framer_to_push->push_bytes(data_span);
@@ -479,8 +478,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
         return;
       }
 
-      detail::invoke_user_callback("uds_server", "on_message", handler,
-                                   MessageContext(id, memory::SafeDataBuffer(msg)));
+      detail::invoke_user_callback("uds_server", "on_message", handler, MessageContext(id, msg));
     });
   }
 };

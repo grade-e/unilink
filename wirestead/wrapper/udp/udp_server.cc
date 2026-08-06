@@ -306,7 +306,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
                 }
 
                 detail::invoke_user_callback("udp_server", "on_message", on_message_handler,
-                                             MessageContext(client_id, memory::SafeDataBuffer(msg)));
+                                             MessageContext(client_id, msg));
               });
               entry.framer = std::move(framer);
             }
@@ -357,8 +357,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
           }
           detail::invoke_user_callback("udp_server", "on_data_batch", flush_handler, batch);
         } else {
-          detail::invoke_user_callback("udp_server", "on_data", data_handler_copy,
-                                       MessageContext(client_id, memory::SafeDataBuffer(data)));
+          detail::invoke_user_callback("udp_server", "on_data", data_handler_copy, MessageContext(client_id, data));
         }
       }
 

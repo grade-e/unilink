@@ -6,6 +6,23 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Changed
+
+- Removed the per-chunk heap allocation and copy from the receive path.
+  `MessageContext` now borrows the payload for the single-shot `on_data()` and
+  `on_message()` dispatch instead of copying it into an owned buffer; only the
+  batch handlers, whose contexts are queued until the batch is flushed, still
+  own their data. Measured on a TCP loopback echo, allocations on the receiving
+  io thread drop from 3 to 2 per callback. The documented callback contract is
+  unchanged - `docs/callbacks.md` already scoped the view to the callback - and
+  copying a `MessageContext` still takes ownership, so keeping one past the
+  callback remains safe.
+- `MessageContext::safe_data()` materializes its buffer on demand when the
+  context borrows its payload. It is now the only accessor that copies; prefer
+  `data()`, `data_as_string()`, or `data_as_vector()`.
+
 ## v0.9.2 - 2026-08-01
 
 ### Added

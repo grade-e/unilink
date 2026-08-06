@@ -475,7 +475,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         }
         detail::invoke_user_callback("tcp_client", "on_data_batch", flush_handler, batch);
       } else {
-        detail::invoke_user_callback("tcp_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("tcp_client", "on_data", handler, MessageContext(0, data));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -567,7 +567,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         return;
       }
 
-      detail::invoke_user_callback("tcp_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
+      detail::invoke_user_callback("tcp_client", "on_message", handler, MessageContext(0, msg));
     });
   }
 

@@ -447,8 +447,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
                   return;
                 }
 
-                detail::invoke_user_callback("tcp_server", "on_message", on_message_handler,
-                                             MessageContext(id, memory::SafeDataBuffer(msg)));
+                detail::invoke_user_callback("tcp_server", "on_message", on_message_handler, MessageContext(id, msg));
               });
               framers_[id] = std::move(shared_framer);
             }
@@ -505,8 +504,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
           }
           detail::invoke_user_callback("tcp_server", "on_data_batch", flush_handler, batch);
         } else {
-          detail::invoke_user_callback("tcp_server", "on_data", handler,
-                                       MessageContext(id, memory::SafeDataBuffer(data_span)));
+          detail::invoke_user_callback("tcp_server", "on_data", handler, MessageContext(id, data_span));
         }
 
         if (framer) framer->push_bytes(data_span);
