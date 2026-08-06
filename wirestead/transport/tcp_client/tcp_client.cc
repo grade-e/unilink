@@ -105,7 +105,10 @@ struct TcpClient::Impl {
   std::atomic<bool> terminal_state_notified_{false};
   std::atomic<bool> reconnect_pending_{false};
 
-  std::array<uint8_t, base::constants::DEFAULT_READ_BUFFER_SIZE> rx_{};
+  // Sized from cfg_.read_buffer_size in init() rather than being a fixed
+  // std::array, so a bulk-transfer workload can trade memory for fewer read
+  // completions and callback dispatches.
+  std::vector<uint8_t> rx_;
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
@@ -166,6 +169,7 @@ struct TcpClient::Impl {
     queue_bytes_ = 0;
     pending_bytes_ = 0;
     cfg_.validate_and_clamp();
+    rx_.resize(cfg_.read_buffer_size);
     recalculate_backpressure_bounds();
     first_retry_interval_ms_ = std::min(first_retry_interval_ms_, cfg_.retry_interval_ms);
   }

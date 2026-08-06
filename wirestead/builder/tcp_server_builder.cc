@@ -41,7 +41,8 @@ TcpServerBuilder<State>::TcpServerBuilder(uint16_t port)
       tcp_no_delay_(true),
       keep_alive_(false),
       send_buffer_size_(0),
-      receive_buffer_size_(0) {
+      receive_buffer_size_(0),
+      read_buffer_size_(base::constants::DEFAULT_READ_BUFFER_SIZE) {
   if (port == 0) throw diagnostics::BuilderException("Invalid port number: 0");
 
   // Ensure background IO service is running
@@ -80,6 +81,7 @@ std::unique_ptr<wrapper::TcpServer> TcpServerBuilder<State>::build() {
   if (keep_alive_set_) server->keep_alive(keep_alive_);
   if (send_buffer_size_set_) server->send_buffer_size(send_buffer_size_);
   if (receive_buffer_size_set_) server->receive_buffer_size(receive_buffer_size_);
+  if (read_buffer_size_set_) server->read_buffer_size(read_buffer_size_);
 
   if (this->bp_strategy_set_) server->backpressure_strategy(this->bp_strategy_);
   server->backpressure_threshold(this->get_effective_backpressure_threshold());
@@ -179,6 +181,13 @@ template <uint32_t State>
 TcpServerBuilder<State>& TcpServerBuilder<State>::receive_buffer_size(size_t bytes) {
   receive_buffer_size_ = bytes;
   receive_buffer_size_set_ = true;
+  return *this;
+}
+
+template <uint32_t State>
+TcpServerBuilder<State>& TcpServerBuilder<State>::read_buffer_size(size_t bytes) {
+  read_buffer_size_ = bytes;
+  read_buffer_size_set_ = true;
   return *this;
 }
 

@@ -106,6 +106,16 @@ class WIRESTEAD_API UdsServer : public ServerInterface {
    */
   UdsServer& socket_permissions(int mode);
   UdsServer& backpressure_threshold(size_t threshold);
+
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]; takes effect on the next
+   * start().
+   */
+  UdsServer& read_buffer_size(size_t bytes);
   UdsServer& backpressure_strategy(base::constants::BackpressureStrategy strategy);
   UdsServer& manage_external_context(bool manage);
   UdsServer& batch_size(size_t size);

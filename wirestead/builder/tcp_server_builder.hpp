@@ -70,7 +70,9 @@ class WIRESTEAD_API TcpServerBuilder : public BuilderInterface<wrapper::TcpServe
         send_buffer_size_(other.send_buffer_size_),
         send_buffer_size_set_(other.send_buffer_size_set_),
         receive_buffer_size_(other.receive_buffer_size_),
-        receive_buffer_size_set_(other.receive_buffer_size_set_) {
+        receive_buffer_size_set_(other.receive_buffer_size_set_),
+        read_buffer_size_(other.read_buffer_size_),
+        read_buffer_size_set_(other.read_buffer_size_set_) {
     this->on_data_ = std::move(other.on_data_);
     this->on_error_ = std::move(other.on_error_);
     this->on_connect_ = std::move(other.on_connect_);
@@ -108,6 +110,15 @@ class WIRESTEAD_API TcpServerBuilder : public BuilderInterface<wrapper::TcpServe
   TcpServerBuilder<State>& keep_alive(bool enable = true);
   TcpServerBuilder<State>& send_buffer_size(size_t bytes);
   TcpServerBuilder<State>& receive_buffer_size(size_t bytes);
+
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
+   */
+  TcpServerBuilder<State>& read_buffer_size(size_t bytes);
 
   // Backward compatibility methods
   TcpServerBuilder<State>& port_retry(bool enable = true, int max_retries = 3, int retry_interval_ms = 1000);
@@ -153,6 +164,8 @@ class WIRESTEAD_API TcpServerBuilder : public BuilderInterface<wrapper::TcpServe
   bool send_buffer_size_set_{false};
   size_t receive_buffer_size_;
   bool receive_buffer_size_set_{false};
+  size_t read_buffer_size_;
+  bool read_buffer_size_set_{false};
 };
 
 using TcpServerBuilderDefault = TcpServerBuilder<BuilderState::None>;

@@ -324,7 +324,7 @@ struct TcpServer::Impl {
       auto new_session = std::make_shared<TcpServerSession>(
           accept_impl->ioc_, std::move(sock), accept_impl->cfg_.backpressure_threshold,
           accept_impl->cfg_.idle_timeout_ms, accept_impl->cfg_.backpressure_strategy,
-          accept_impl->cfg_.enable_memory_pool);
+          accept_impl->cfg_.enable_memory_pool, accept_impl->cfg_.read_buffer_size);
 
       ClientId client_id = accept_impl->next_client_id_.fetch_add(1);
 

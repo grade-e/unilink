@@ -40,6 +40,12 @@ struct TcpClientConfig {
   bool keep_alive = base::constants::DEFAULT_KEEP_ALIVE;
   size_t send_buffer_size = 0;
   size_t receive_buffer_size = 0;
+  // Size of the per-connection userspace read buffer that each
+  // async_read_some() fills. Distinct from receive_buffer_size, which is the
+  // kernel's SO_RCVBUF. Raising this reduces read completions and callback
+  // dispatches on bulk transfers, at the cost of that much memory per
+  // connection.
+  size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE;
 
   TcpClientConfig() = default;
   TcpClientConfig(const TcpClientConfig&) = default;
@@ -49,8 +55,9 @@ struct TcpClientConfig {
 
   // Validation methods
   bool is_valid() const {
-    return util::InputValidator::is_valid_host(host) && port > 0 &&
-           retry_interval_ms >= base::constants::MIN_RETRY_INTERVAL_MS &&
+    return read_buffer_size >= base::constants::MIN_READ_BUFFER_SIZE &&
+           read_buffer_size <= base::constants::MAX_READ_BUFFER_SIZE && util::InputValidator::is_valid_host(host) &&
+           port > 0 && retry_interval_ms >= base::constants::MIN_RETRY_INTERVAL_MS &&
            retry_interval_ms <= base::constants::MAX_RETRY_INTERVAL_MS &&
            connection_timeout_ms >= base::constants::MIN_CONNECTION_TIMEOUT_MS &&
            connection_timeout_ms <= base::constants::MAX_CONNECTION_TIMEOUT_MS &&
@@ -67,6 +74,11 @@ struct TcpClientConfig {
 
   // Apply validation and clamp values to valid ranges
   void validate_and_clamp() {
+    if (read_buffer_size < base::constants::MIN_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MIN_READ_BUFFER_SIZE;
+    } else if (read_buffer_size > base::constants::MAX_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MAX_READ_BUFFER_SIZE;
+    }
     if (retry_interval_ms < base::constants::MIN_RETRY_INTERVAL_MS) {
       retry_interval_ms = base::constants::MIN_RETRY_INTERVAL_MS;
     } else if (retry_interval_ms > base::constants::MAX_RETRY_INTERVAL_MS) {

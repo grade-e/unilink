@@ -68,7 +68,9 @@ class WIRESTEAD_API TcpClientBuilder : public BuilderInterface<wrapper::TcpClien
         send_buffer_size_(other.send_buffer_size_),
         send_buffer_size_set_(other.send_buffer_size_set_),
         receive_buffer_size_(other.receive_buffer_size_),
-        receive_buffer_size_set_(other.receive_buffer_size_set_) {
+        receive_buffer_size_set_(other.receive_buffer_size_set_),
+        read_buffer_size_(other.read_buffer_size_),
+        read_buffer_size_set_(other.read_buffer_size_set_) {
     this->on_data_ = std::move(other.on_data_);
     this->on_error_ = std::move(other.on_error_);
     this->on_connect_ = std::move(other.on_connect_);
@@ -115,6 +117,15 @@ class WIRESTEAD_API TcpClientBuilder : public BuilderInterface<wrapper::TcpClien
   TcpClientBuilder<State>& send_buffer_size(size_t bytes);
   TcpClientBuilder<State>& receive_buffer_size(size_t bytes);
 
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
+   */
+  TcpClientBuilder<State>& read_buffer_size(size_t bytes);
+
  private:
   template <uint32_t S>
   friend class TcpClientBuilder;
@@ -142,6 +153,8 @@ class WIRESTEAD_API TcpClientBuilder : public BuilderInterface<wrapper::TcpClien
   bool send_buffer_size_set_{false};
   size_t receive_buffer_size_;
   bool receive_buffer_size_set_{false};
+  size_t read_buffer_size_;
+  bool read_buffer_size_set_{false};
 };
 
 using TcpClientBuilderDefault = TcpClientBuilder<BuilderState::None>;

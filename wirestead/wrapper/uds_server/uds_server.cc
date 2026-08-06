@@ -45,6 +45,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
   std::atomic<bool> client_limit_enabled_{false};
   std::atomic<int> socket_permissions_{-1};
   std::atomic<size_t> backpressure_threshold_{base::constants::DEFAULT_BACKPRESSURE_THRESHOLD};
+  std::atomic<size_t> read_buffer_size_{base::constants::DEFAULT_READ_BUFFER_SIZE};
   std::atomic<base::constants::BackpressureStrategy> backpressure_strategy_{
       base::constants::BackpressureStrategy::Reliable};
 
@@ -220,6 +221,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
       config.max_connections =
           static_cast<int>(std::min(max_clients_.load(), static_cast<size_t>(base::constants::MAX_MAX_CONNECTIONS)));
       config.backpressure_threshold = backpressure_threshold_.load();
+      config.read_buffer_size = read_buffer_size_.load();
       config.backpressure_strategy = backpressure_strategy_.load();
       config.socket_permissions = socket_permissions_.load();
       server_ = factory::ChannelFactory::create(config, external_ioc_);
@@ -625,6 +627,11 @@ UdsServer& UdsServer::socket_permissions(int mode) {
 
 UdsServer& UdsServer::backpressure_threshold(size_t threshold) {
   impl_->backpressure_threshold_.store(threshold);
+  return *this;
+}
+
+UdsServer& UdsServer::read_buffer_size(size_t bytes) {
+  impl_->read_buffer_size_.store(bytes);
   return *this;
 }
 

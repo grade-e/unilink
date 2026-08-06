@@ -8,6 +8,18 @@ and ABI policy.
 
 ## Unreleased
 
+### Added
+
+- `read_buffer_size` on the TCP and UDS configs, wrappers, and builders. This
+  is the userspace buffer each read fills, and it was previously a
+  compile-time-fixed 4 KiB `std::array` per connection with no way to change
+  it — `receive_buffer_size` only ever set the kernel's `SO_RCVBUF`. Raising it
+  cuts read completions and callback dispatches on bulk transfers. The default
+  is unchanged at 4 KiB, and values are clamped to
+  `[MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]` (512 B to 1 MiB). The ceiling
+  is far below `MAX_SOCKET_BUFFER_SIZE` because this buffer is per connection
+  and a server multiplies it by `max_connections`.
+
 ### Changed
 
 - Removed the per-chunk heap allocation and copy from the receive path.

@@ -83,6 +83,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
   int max_retries_ = base::constants::DEFAULT_MAX_RETRIES;
   std::chrono::milliseconds connection_timeout_{base::constants::DEFAULT_CONNECTION_TIMEOUT_MS};
   size_t backpressure_threshold_ = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
+  size_t read_buffer_size_ = base::constants::DEFAULT_READ_BUFFER_SIZE;
   // Atomic rather than mutex-guarded: read from the send()/send_line() fast
   // path on arbitrary caller threads while the setter can be called
   // concurrently from any other thread (#436).
@@ -189,6 +190,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       cfg.max_retries = max_retries_;
       cfg.connection_timeout_ms = static_cast<unsigned>(connection_timeout_.count());
       cfg.backpressure_threshold = backpressure_threshold_;
+      cfg.read_buffer_size = read_buffer_size_;
       cfg.backpressure_strategy = backpressure_strategy_;
 
       if (use_external_context_) {
@@ -693,6 +695,12 @@ UdsClient& UdsClient::connection_timeout(std::chrono::milliseconds timeout) {
 UdsClient& UdsClient::backpressure_threshold(size_t threshold) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->backpressure_threshold_ = threshold;
+  return *this;
+}
+
+UdsClient& UdsClient::read_buffer_size(size_t bytes) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->read_buffer_size_ = bytes;
   return *this;
 }
 

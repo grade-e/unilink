@@ -73,6 +73,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
   std::atomic<bool> keep_alive_{base::constants::DEFAULT_KEEP_ALIVE};
   std::atomic<size_t> send_buffer_size_{0};
   std::atomic<size_t> receive_buffer_size_{0};
+  std::atomic<size_t> read_buffer_size_{base::constants::DEFAULT_READ_BUFFER_SIZE};
 
   ConnectionHandler on_client_connect_{nullptr};
   ConnectionHandler on_disconnect_{nullptr};
@@ -235,6 +236,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
       config.keep_alive = keep_alive_.load();
       config.send_buffer_size = send_buffer_size_.load();
       config.receive_buffer_size = receive_buffer_size_.load();
+      config.read_buffer_size = read_buffer_size_.load();
       config.use_shared_context = shared_context_.load();
 
       channel_ = factory::ChannelFactory::create(config, external_ioc_);
@@ -745,6 +747,11 @@ TcpServer& TcpServer::send_buffer_size(size_t bytes) {
 
 TcpServer& TcpServer::receive_buffer_size(size_t bytes) {
   impl_->receive_buffer_size_.store(bytes);
+  return *this;
+}
+
+TcpServer& TcpServer::read_buffer_size(size_t bytes) {
+  impl_->read_buffer_size_.store(bytes);
   return *this;
 }
 

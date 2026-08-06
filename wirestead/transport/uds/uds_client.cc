@@ -80,7 +80,10 @@ struct UdsClient::Impl {
   std::atomic<bool> stop_requested_{false};
   std::atomic<bool> stopping_{false};
 
-  std::array<uint8_t, base::constants::DEFAULT_READ_BUFFER_SIZE> rx_{};
+  // Sized from cfg_.read_buffer_size in init() rather than being a fixed
+  // std::array, so a bulk-transfer workload can trade memory for fewer read
+  // completions and callback dispatches.
+  std::vector<uint8_t> rx_;
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
@@ -142,6 +145,7 @@ struct UdsClient::Impl {
     queue_bytes_ = 0;
     pending_bytes_ = 0;
     cfg_.validate_and_clamp();
+    rx_.resize(cfg_.read_buffer_size);
     recalculate_backpressure_bounds();
   }
 
@@ -614,7 +618,7 @@ void UdsClient::Impl::start_read(std::shared_ptr<UdsClient> self, uint64_t seq) 
     return;
   }
 
-  socket_->async_read_some(net::buffer(rx_),
+  socket_->async_read_some(net::buffer(rx_.data(), rx_.size()),
                            net::bind_executor(strand_, [self, seq](const boost::system::error_code& ec, size_t bytes) {
                              if (ec == net::error::operation_aborted || seq != self->impl_->current_seq_.load()) return;
                              if (self->impl_->stop_requested_.load() || self->impl_->stopping_.load()) return;

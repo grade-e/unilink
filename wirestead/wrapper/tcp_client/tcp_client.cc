@@ -94,6 +94,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
   bool keep_alive_ = base::constants::DEFAULT_KEEP_ALIVE;
   size_t send_buffer_size_ = 0;
   size_t receive_buffer_size_ = 0;
+  size_t read_buffer_size_ = base::constants::DEFAULT_READ_BUFFER_SIZE;
 
   Impl(const std::string& host, uint16_t port) : host_(host), port_(port), started_(false) {}
 
@@ -207,6 +208,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       config.keep_alive = keep_alive_;
       config.send_buffer_size = send_buffer_size_;
       config.receive_buffer_size = receive_buffer_size_;
+      config.read_buffer_size = read_buffer_size_;
       channel_ = factory::ChannelFactory::create(config, external_ioc_);
       setup_internal_handlers();
     }
@@ -776,6 +778,12 @@ TcpClient& TcpClient::send_buffer_size(size_t bytes) {
 TcpClient& TcpClient::receive_buffer_size(size_t bytes) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->receive_buffer_size_ = bytes;
+  return *this;
+}
+
+TcpClient& TcpClient::read_buffer_size(size_t bytes) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->read_buffer_size_ = bytes;
   return *this;
 }
 

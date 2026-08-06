@@ -110,7 +110,7 @@ endforeach()
 
 # Config tests (separate executables)
 foreach(test_file test_config.cc test_config_security.cc
-                  test_config_failure.cpp
+                  test_config_failure.cpp test_read_buffer_size.cc
 )
   get_filename_component(test_name ${test_file} NAME_WE)
   wirestead_add_unit_gtest(

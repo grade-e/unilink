@@ -24,7 +24,7 @@ namespace transport {
 
 UdsServerSession::UdsServerSession(net::io_context& ioc, uds::socket sock, size_t backpressure_threshold,
                                    int idle_timeout_ms, base::constants::BackpressureStrategy strategy,
-                                   bool enable_memory_pool)
+                                   bool enable_memory_pool, size_t read_buffer_size)
     : ioc_(ioc),
       strand_(net::make_strand(ioc_)),
       idle_timer_(ioc),
@@ -35,11 +35,15 @@ UdsServerSession::UdsServerSession(net::io_context& ioc, uds::socket sock, size_
       bp_low_(backpressure_threshold > 1 ? backpressure_threshold / 2 : backpressure_threshold),
       bp_limit_(std::min(std::max(backpressure_threshold * 4, base::constants::DEFAULT_BACKPRESSURE_THRESHOLD),
                          base::constants::MAX_BUFFER_SIZE)),
-      idle_timeout_ms_(idle_timeout_ms) {}
+      idle_timeout_ms_(idle_timeout_ms) {
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
+}
 
 UdsServerSession::UdsServerSession(net::io_context& ioc, std::unique_ptr<interface::UdsSocketInterface> socket,
                                    size_t backpressure_threshold, int idle_timeout_ms,
-                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool)
+                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool,
+                                   size_t read_buffer_size)
     : ioc_(ioc),
       strand_(net::make_strand(ioc_)),
       idle_timer_(ioc),
@@ -50,7 +54,10 @@ UdsServerSession::UdsServerSession(net::io_context& ioc, std::unique_ptr<interfa
       bp_low_(backpressure_threshold > 1 ? backpressure_threshold / 2 : backpressure_threshold),
       bp_limit_(std::min(std::max(backpressure_threshold * 4, base::constants::DEFAULT_BACKPRESSURE_THRESHOLD),
                          base::constants::MAX_BUFFER_SIZE)),
-      idle_timeout_ms_(idle_timeout_ms) {}
+      idle_timeout_ms_(idle_timeout_ms) {
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
+}
 
 void UdsServerSession::start() {
   alive_ = true;
@@ -288,7 +295,7 @@ void UdsServerSession::on_close(OnClose cb) {
 
 void UdsServerSession::start_read() {
   socket_->async_read_some(
-      net::buffer(rx_),
+      net::buffer(rx_.data(), rx_.size()),
       net::bind_executor(strand_, [this, self = shared_from_this()](const boost::system::error_code& ec, size_t bytes) {
         if (closing_ || !alive_) return;
         if (ec) {

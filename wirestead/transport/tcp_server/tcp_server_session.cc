@@ -28,7 +28,7 @@ namespace transport {
 
 TcpServerSession::TcpServerSession(net::io_context& ioc, tcp::socket sock, size_t backpressure_threshold,
                                    int idle_timeout_ms, base::constants::BackpressureStrategy strategy,
-                                   bool enable_memory_pool)
+                                   bool enable_memory_pool, size_t read_buffer_size)
     : ioc_(ioc),
       strand_(ioc.get_executor()),
       idle_timer_(ioc),
@@ -45,11 +45,14 @@ TcpServerSession::TcpServerSession(net::io_context& ioc, tcp::socket sock, size_
                        base::constants::MAX_BUFFER_SIZE);
   bp_low_ = bp_high_ > 1 ? bp_high_ / 2 : bp_high_;
   if (bp_low_ == 0) bp_low_ = 1;
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
 }
 
 TcpServerSession::TcpServerSession(net::io_context& ioc, std::unique_ptr<interface::TcpSocketInterface> socket,
                                    size_t backpressure_threshold, int idle_timeout_ms,
-                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool)
+                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool,
+                                   size_t read_buffer_size)
     : ioc_(ioc),
       strand_(ioc.get_executor()),
       idle_timer_(ioc),
@@ -66,6 +69,8 @@ TcpServerSession::TcpServerSession(net::io_context& ioc, std::unique_ptr<interfa
                        base::constants::MAX_BUFFER_SIZE);
   bp_low_ = bp_high_ > 1 ? bp_high_ / 2 : bp_high_;
   if (bp_low_ == 0) bp_low_ = 1;
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
 }
 
 void TcpServerSession::start() {

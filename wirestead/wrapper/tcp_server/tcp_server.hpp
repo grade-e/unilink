@@ -117,6 +117,18 @@ class WIRESTEAD_API TcpServer : public ServerInterface {
   TcpServer& keep_alive(bool enable = true);
   TcpServer& send_buffer_size(size_t bytes);
   TcpServer& receive_buffer_size(size_t bytes);
+
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Distinct from receive_buffer_size(), which sets the kernel's SO_RCVBUF.
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection - a server
+   * multiplies it by the number of accepted connections. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]; takes effect on the next
+   * start().
+   */
+  TcpServer& read_buffer_size(size_t bytes);
   TcpServer& manage_external_context(bool manage);
   TcpServer& batch_size(size_t size);
   TcpServer& batch_latency(std::chrono::milliseconds latency);

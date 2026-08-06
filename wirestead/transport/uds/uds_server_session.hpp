@@ -61,13 +61,13 @@ class WIRESTEAD_API UdsServerSession : public std::enable_shared_from_this<UdsSe
                    size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD,
                    int idle_timeout_ms = 0,
                    base::constants::BackpressureStrategy strategy = base::constants::BackpressureStrategy::Reliable,
-                   bool enable_memory_pool = true);
+                   bool enable_memory_pool = true, size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE);
 
   UdsServerSession(net::io_context& ioc, std::unique_ptr<interface::UdsSocketInterface> socket,
                    size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD,
                    int idle_timeout_ms = 0,
                    base::constants::BackpressureStrategy strategy = base::constants::BackpressureStrategy::Reliable,
-                   bool enable_memory_pool = true);
+                   bool enable_memory_pool = true, size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE);
 
   void start();
   bool async_write_copy(memory::ConstByteSpan data);
@@ -107,7 +107,10 @@ class WIRESTEAD_API UdsServerSession : public std::enable_shared_from_this<UdsSe
   // used to always heap-allocate a fresh std::vector).
   memory::MemoryPool pool_{50, 200};
   bool enable_memory_pool_ = true;
-  std::array<uint8_t, base::constants::DEFAULT_READ_BUFFER_SIZE> rx_{};
+  // Sized from the server's read_buffer_size rather than being a fixed
+  // std::array: this buffer exists per connection, so a server trades memory
+  // against read completions here with max_connections as the multiplier.
+  std::vector<uint8_t> rx_;
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};

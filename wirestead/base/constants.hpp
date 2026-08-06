@@ -53,6 +53,14 @@ constexpr size_t DEFAULT_BACKPRESSURE_THRESHOLD = DEFAULT_THRESHOLD_RELIABLE;
 constexpr size_t MIN_BACKPRESSURE_THRESHOLD = 1024;       // 1 KiB minimum
 constexpr size_t MAX_BACKPRESSURE_THRESHOLD = 100 << 20;  // 100 MiB maximum
 constexpr size_t DEFAULT_READ_BUFFER_SIZE = 4096;         // 4 KiB
+// Bounds for the per-connection userspace read buffer (the buffer each
+// async_read_some() fills, sized by *Config::read_buffer_size). A larger
+// buffer means fewer read completions and fewer callback dispatches for bulk
+// transfers. The ceiling is far below MAX_SOCKET_BUFFER_SIZE below because
+// this buffer is allocated per connection and a server multiplies it by
+// max_connections, whereas SO_RCVBUF is charged to the kernel per socket.
+constexpr size_t MIN_READ_BUFFER_SIZE = 512;          // 512 B
+constexpr size_t MAX_READ_BUFFER_SIZE = 1024 * 1024;  // 1 MiB
 
 // Retry and timeout constants
 constexpr unsigned DEFAULT_RETRY_INTERVAL_MS = 1000;      // 1 second
