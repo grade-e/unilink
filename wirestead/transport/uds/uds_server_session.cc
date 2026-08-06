@@ -312,28 +312,16 @@ void UdsServerSession::start_read() {
 void UdsServerSession::do_write() {
   if (tx_.empty() || writing_) return;
   writing_ = true;
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
+  // Drain several queued buffers into one scatter-gather write rather than one
+  // send syscall per message. `writing_` keeps do_write() from re-entering.
+  const size_t bytes_to_write = queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
-  net::const_buffer buffer;
-  std::visit(
-      [&buffer](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, std::vector<uint8_t>>)
-          buffer = net::buffer(arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>)
-          buffer = net::buffer(*arg);
-        else if constexpr (std::is_same_v<T, memory::PooledBuffer>)
-          buffer = net::buffer(arg.data(), arg.size());
-      },
-      *current_write_buffer_);
-
-  size_t bytes_to_write = buffer.size();
-  socket_->async_write(buffer, net::bind_executor(strand_, [this, self = shared_from_this(), bytes_to_write](
-                                                               const boost::system::error_code& ec, size_t written) {
+  socket_->async_write(current_write_views_,
+                       net::bind_executor(strand_, [this, self = shared_from_this(), bytes_to_write](
+                                                       const boost::system::error_code& ec, size_t written) {
                          if (closing_ || !alive_) return;
                          writing_ = false;
-                         current_write_buffer_ = std::nullopt;
+                         current_write_batch_.clear();
                          queue_bytes_ = (queue_bytes_ >= bytes_to_write) ? (queue_bytes_ - bytes_to_write) : 0;
                          report_backpressure(queue_bytes_);
 
@@ -365,7 +353,7 @@ void UdsServerSession::do_close() {
     auto f = bp_fields();
     queue_util::drain_and_clear_backpressure(f, on_bp_, [&]() {
       tx_.clear();
-      current_write_buffer_ = std::nullopt;
+      current_write_batch_.clear();
       queue_bytes_ = 0;
       pending_.clear();
       pending_bytes_ = 0;

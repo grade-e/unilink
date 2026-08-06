@@ -87,7 +87,10 @@ struct UdsClient::Impl {
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
-  std::optional<BufferVariant> current_write_buffer_;
+  // Buffers handed to the in-flight gather write; current_write_views_
+  // points into the batch, so neither is touched while a write is in flight.
+  std::vector<BufferVariant> current_write_batch_;
+  std::vector<net::const_buffer> current_write_views_;
   bool writing_ = false;
   std::atomic<size_t> queue_bytes_{0};
   // Bytes accepted by a plain async_write_* call but not yet routed onto the
@@ -644,41 +647,29 @@ void UdsClient::Impl::do_write(std::shared_ptr<UdsClient> self, uint64_t seq) {
     pending_.clear();
     queue_bytes_ = 0;
     pending_bytes_ = 0;
-    current_write_buffer_ = std::nullopt;
+    current_write_batch_.clear();
     writing_ = false;
     return;
   }
 
   if (tx_.empty() || writing_) return;
   writing_ = true;
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
+  // Drain several queued buffers into one scatter-gather write rather than one
+  // send syscall per message. `writing_` keeps do_write() from re-entering, so
+  // the batch and its views stay put for the whole operation.
+  const size_t bytes_to_write = queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
-  net::const_buffer buffer;
-  std::visit(
-      [&buffer](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, std::vector<uint8_t>>)
-          buffer = net::buffer(arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>)
-          buffer = net::buffer(*arg);
-        else if constexpr (std::is_same_v<T, memory::PooledBuffer>)
-          buffer = net::buffer(arg.data(), arg.size());
-      },
-      *current_write_buffer_);
-
-  size_t bytes_to_write = buffer.size();
   socket_->async_write(
-      buffer,
+      current_write_views_,
       net::bind_executor(strand_, [self, seq, bytes_to_write](const boost::system::error_code& ec, size_t written) {
         if (ec == net::error::operation_aborted || seq != self->impl_->current_seq_.load()) return;
         if (self->impl_->stop_requested_.load() || self->impl_->stopping_.load()) {
-          self->impl_->current_write_buffer_ = std::nullopt;
+          self->impl_->current_write_batch_.clear();
           self->impl_->writing_ = false;
           return;
         }
         self->impl_->writing_ = false;
-        self->impl_->current_write_buffer_ = std::nullopt;
+        self->impl_->current_write_batch_.clear();
         self->impl_->queue_bytes_ =
             (self->impl_->queue_bytes_ >= bytes_to_write) ? (self->impl_->queue_bytes_ - bytes_to_write) : 0;
         self->impl_->report_backpressure(self, self->impl_->queue_bytes_);
@@ -727,7 +718,7 @@ void UdsClient::Impl::perform_stop_cleanup(uint64_t seq) {
   queue_bytes_ = 0;
   pending_.clear();
   pending_bytes_ = 0;
-  current_write_buffer_ = std::nullopt;
+  current_write_batch_.clear();
   writing_ = false;
   connected_.store(false);
   backpressure_active_.store(false);

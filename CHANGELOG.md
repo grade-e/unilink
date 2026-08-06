@@ -22,6 +22,12 @@ and ABI policy.
 
 ### Changed
 
+- Stream transports now drain several queued buffers into one scatter-gather
+  write instead of one send syscall per queued message. Measured on a TCP
+  loopback burst of 16386 small messages, send syscalls drop from 16386 to
+  1025. The socket interfaces gained a buffer-sequence `async_write` overload
+  with a correct default implementation, so existing implementations keep
+  working unchanged.
 - Removed the per-chunk heap allocation and copy from the receive path.
   `MessageContext` now borrows the payload for the single-shot `on_data()` and
   `on_message()` dispatch instead of copying it into an owned buffer; only the

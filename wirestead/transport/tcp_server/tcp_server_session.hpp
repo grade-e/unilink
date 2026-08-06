@@ -115,7 +115,10 @@ class WIRESTEAD_API TcpServerSession : public std::enable_shared_from_this<TcpSe
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
-  std::optional<BufferVariant> current_write_buffer_;
+  // Buffers handed to the in-flight gather write; `current_write_views_`
+  // points into the batch, so neither is touched while a write is in flight.
+  std::vector<BufferVariant> current_write_batch_;
+  std::vector<net::const_buffer> current_write_views_;
   bool writing_ = false;
   std::atomic<size_t> queue_bytes_{0};
   // Bytes accepted by a plain async_write_* call but not yet routed onto the

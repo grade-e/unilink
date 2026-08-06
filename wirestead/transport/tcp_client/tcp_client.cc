@@ -112,7 +112,12 @@ struct TcpClient::Impl {
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
-  std::optional<BufferVariant> current_write_buffer_;
+  // Buffers handed to the in-flight write. Several at a time rather than one:
+  // a backlog of queued messages used to cost one send syscall each. `views_`
+  // points into `current_write_batch_`, so both stay untouched for the whole
+  // async_write - `writing_` is what guarantees that.
+  std::vector<BufferVariant> current_write_batch_;
+  std::vector<net::const_buffer> current_write_views_;
   bool writing_ = false;
   std::atomic<size_t> queue_bytes_{0};
   // Bytes accepted by a plain async_write_* call but not yet routed onto the
@@ -916,25 +921,11 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
   }
   writing_ = true;
 
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
-
-  auto& current = *current_write_buffer_;
-
-  auto queued_bytes = std::visit(
-      [](auto&& buf) -> size_t {
-        using Buffer = std::decay_t<decltype(buf)>;
-        if constexpr (std::is_same_v<Buffer, std::shared_ptr<const std::vector<uint8_t>>>) {
-          return buf ? buf->size() : 0;
-        } else {
-          return buf.size();
-        }
-      },
-      current);
+  const auto queued_bytes = queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
   auto on_write = [self, queued_bytes, seq](auto ec, std::size_t bytes_written) {
     if (ec == net::error::operation_aborted || seq != self->impl_->current_seq_.load()) {
-      self->impl_->current_write_buffer_.reset();
+      self->impl_->current_write_batch_.clear();
       self->impl_->queue_bytes_ =
           (self->impl_->queue_bytes_ > queued_bytes) ? (self->impl_->queue_bytes_ - queued_bytes) : 0;
       self->impl_->report_backpressure(self, self->impl_->queue_bytes_);
@@ -943,10 +934,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
     }
 
     if (ec) {
-      if (self->impl_->current_write_buffer_) {
-        self->impl_->tx_.push_front(std::move(*self->impl_->current_write_buffer_));
-      }
-      self->impl_->current_write_buffer_.reset();
+      queue_util::return_gather_batch(self->impl_->tx_, self->impl_->current_write_batch_);
 
       WIRESTEAD_LOG_ERROR("tcp_client", "do_write", fmt::format("Write failed: {}", ec.message()));
       self->impl_->record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::COMMUNICATION, "write", ec,
@@ -956,7 +944,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
       return;
     }
 
-    self->impl_->current_write_buffer_.reset();
+    self->impl_->current_write_batch_.clear();
     self->impl_->stats_.record_sent(bytes_written);
     if (bytes_written > 0) {
       self->impl_->reset_idle_timer(self, seq);
@@ -974,16 +962,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
     self->impl_->do_write(self, seq);
   };
 
-  std::visit(
-      [&](const auto& buf) {
-        using T = std::decay_t<decltype(buf)>;
-        if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>) {
-          net::async_write(socket_, net::buffer(buf->data(), buf->size()), on_write);
-        } else {
-          net::async_write(socket_, net::buffer(buf.data(), buf.size()), on_write);
-        }
-      },
-      current);
+  net::async_write(socket_, current_write_views_, on_write);
 }
 
 void TcpClient::Impl::handle_close(std::shared_ptr<TcpClient> self, uint64_t seq, const boost::system::error_code& ec) {

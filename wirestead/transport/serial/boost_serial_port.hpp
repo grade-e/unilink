@@ -58,6 +58,13 @@ class WIRESTEAD_API BoostSerialPort : public interface::SerialPortInterface {
     net::async_write(port_, buffer, std::move(handler));
   }
 
+  // Real scatter-gather write: hands the sequence to asio, which issues one
+  // sendmsg/writev instead of one send per queued buffer.
+  void async_write(const std::vector<net::const_buffer>& buffers,
+                   std::function<void(const boost::system::error_code&, std::size_t)> handler) override {
+    net::async_write(port_, buffers, std::move(handler));
+  }
+
  private:
   net::serial_port port_;
 };

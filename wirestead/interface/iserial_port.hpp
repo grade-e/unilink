@@ -18,7 +18,9 @@
 
 #include <boost/asio.hpp>
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "wirestead/base/platform.hpp"
 #include "wirestead/base/visibility.hpp"
@@ -50,7 +52,40 @@ class WIRESTEAD_API SerialPortInterface {
                                std::function<void(const boost::system::error_code&, std::size_t)> handler) = 0;
   virtual void async_write(const net::const_buffer& buffer,
                            std::function<void(const boost::system::error_code&, std::size_t)> handler) = 0;
+
+  // Scatter-gather write: sends every buffer in `buffers` as one operation,
+  // completing once with the total byte count or the first error. Draining
+  // several queued messages this way turns N send syscalls into one.
+  //
+  // The memory the buffers point at must stay valid until the handler runs.
+  //
+  // The default flattens into one buffer and delegates to the single-buffer
+  // overload above: correct, but it copies, so implementations backed by a real
+  // socket override it. Test doubles can rely on the default.
+  virtual void async_write(const std::vector<net::const_buffer>& buffers,
+                           std::function<void(const boost::system::error_code&, std::size_t)> handler);
 };
+
+// Flattens into one contiguous buffer and delegates. Copies, which is why a
+// socket-backed implementation overrides this; kept here so test doubles and
+// any not-yet-converted implementation stay correct for free. `flat` is
+// owned by the completion lambda, so it outlives the delegated write.
+inline void SerialPortInterface::async_write(
+    const std::vector<net::const_buffer>& buffers,
+    std::function<void(const boost::system::error_code&, std::size_t)> handler) {
+  auto flat = std::make_shared<std::vector<unsigned char>>();
+  std::size_t total = 0;
+  for (const auto& b : buffers) total += b.size();
+  flat->reserve(total);
+  for (const auto& b : buffers) {
+    const auto* p = static_cast<const unsigned char*>(b.data());
+    flat->insert(flat->end(), p, p + b.size());
+  }
+  async_write(net::const_buffer(flat->data(), flat->size()),
+              [flat, handler = std::move(handler)](const boost::system::error_code& ec, std::size_t n) {
+                if (handler) handler(ec, n);
+              });
+}
 
 }  // namespace interface
 }  // namespace wirestead

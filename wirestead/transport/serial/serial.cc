@@ -79,7 +79,10 @@ struct Serial::Impl {
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
-  std::optional<BufferVariant> current_write_buffer_;
+  // Buffers handed to the in-flight gather write; current_write_views_
+  // points into the batch, so neither is touched while a write is in flight.
+  std::vector<BufferVariant> current_write_batch_;
+  std::vector<net::const_buffer> current_write_views_;
   bool writing_ = false;
   std::atomic<size_t> queued_bytes_{0};
   // Bytes accepted by a plain async_write_* call but not yet routed onto the
@@ -372,14 +375,14 @@ struct Serial::Impl {
     }
     writing_ = true;
 
-    current_write_buffer_ = std::move(tx_.front());
-    tx_.pop_front();
-
-    auto& current = *current_write_buffer_;
+    // Drain several queued buffers into one scatter-gather write rather than
+    // one write syscall per message. `writing_` keeps do_write() from
+    // re-entering, so the batch and its views stay put for the whole operation.
+    queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
     auto on_write = [self](const boost::system::error_code& ec, std::size_t n) {
       auto impl = self->get_impl();
-      impl->current_write_buffer_.reset();
+      impl->current_write_batch_.clear();
 
       if (impl->queued_bytes_ >= n) {
         impl->queued_bytes_ -= n;
@@ -401,24 +404,7 @@ struct Serial::Impl {
       impl->do_write(self);
     };
 
-    std::visit(
-        [&](auto&& buf) {
-          using T = std::decay_t<decltype(buf)>;
-          auto* data_ptr = [&]() {
-            if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>)
-              return buf->data();
-            else
-              return buf.data();
-          }();
-          auto size = [&]() {
-            if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>)
-              return buf->size();
-            else
-              return buf.size();
-          }();
-          port_->async_write(net::buffer(data_ptr, size), net::bind_executor(strand_, on_write));
-        },
-        current);
+    port_->async_write(current_write_views_, net::bind_executor(strand_, on_write));
   }
 
   void perform_cleanup() {

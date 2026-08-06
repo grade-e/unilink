@@ -58,6 +58,7 @@ foreach(
   test_tcp_cancel.cc
   test_tcp_nodelay_default.cc
   test_read_buffer_size.cc
+  test_gather_write.cc
 )
   get_filename_component(test_name ${test_file} NAME_WE)
 
