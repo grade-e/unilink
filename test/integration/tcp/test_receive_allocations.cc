@@ -87,11 +87,15 @@ void operator delete[](void* p, std::size_t) noexcept { std::free(p); }
 void operator delete(void* p, const std::nothrow_t&) noexcept { std::free(p); }
 void operator delete[](void* p, const std::nothrow_t&) noexcept { std::free(p); }
 
-// The receive path must not allocate once per delivered message. It used to
+// The receive path must not add an allocation per delivered message. It used to
 // allocate three times per callback - the chunk was copied into the context and
 // each std::function handler was copied on the way out. Both are gone; this
 // pins that down, because the cost is invisible in latency and only shows up as
 // allocator pressure under load.
+//
+// Measured on the parent commit vs here: 3.0 -> 0.0 on Linux and macOS,
+// 7.0 -> 3.0 and 3.0 -> 1.0 on the two Windows job configurations. What is left
+// on Windows is asio's, not ours; see the bound below.
 TEST(ReceiveAllocationsTest, DoesNotAllocatePerDeliveredMessage) {
   const uint16_t port = TestUtils::getAvailableTestPort();
 
@@ -135,13 +139,32 @@ TEST(ReceiveAllocationsTest, DoesNotAllocatePerDeliveredMessage) {
   const size_t allocations = g_probe.allocs_at_last_callback - g_probe.allocs_at_first_callback;
   const double per_callback = static_cast<double>(allocations) / static_cast<double>(callbacks - 1);
 
-  // The steady state measures 0.0 exactly, and the regression this guards
-  // against sits at 3.0. The bound is deliberately loose rather than == 0: the
-  // claim worth pinning is "does not allocate per message", and a stray
-  // allocation from an unrelated io-thread wakeup should not fail the build.
-  EXPECT_LT(per_callback, 0.5) << "receive path allocated " << per_callback << " times per callback (" << allocations
-                               << " allocations across " << callbacks
-                               << " callbacks) - something on the receive path is allocating per message again";
+  // On Linux and macOS the steady state measures 0.0 exactly, so the bound only
+  // has to be loose enough that a stray allocation from an unrelated io-thread
+  // wakeup does not fail the build.
+  //
+  // Windows has a non-zero floor that is not ours to remove. asio's backend
+  // there is IOCP, a proactor that allocates per async operation, and this
+  // project binds no custom handler allocator, so those allocations land in the
+  // same counter. The floor also depends on how the test binary is linked -
+  // measured 1.0 for the x64-windows jobs and 3.0 for x64-windows-static-md -
+  // so a single tight bound would either fail on one or go blind on the other.
+  //
+  // 3.5 clears the higher floor and still catches the regression this exists
+  // for: three allocations per message coming back reads 4.0 against the 1.0
+  // floor and 7.0 against the 3.0 floor, both measured on the parent commit.
+  // The margin over the 3.0 floor is thin. If this starts flaking on Windows,
+  // raising the bound is the wrong fix - re-measure the floor on the parent
+  // commit first, because a floor that moved on its own is the finding.
+#ifdef _WIN32
+  constexpr double kMaxAllocationsPerCallback = 3.5;
+#else
+  constexpr double kMaxAllocationsPerCallback = 0.5;
+#endif
+
+  EXPECT_LT(per_callback, kMaxAllocationsPerCallback)
+      << "receive path allocated " << per_callback << " times per callback (" << allocations << " allocations across "
+      << callbacks << " callbacks) - something on the receive path is allocating per message again";
 
   client->stop();
   server->stop();
