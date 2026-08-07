@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -73,6 +74,16 @@ void invoke_user_callback(std::string_view component, std::string_view operation
   } catch (...) {
     WIRESTEAD_LOG_ERROR(component, operation, "Uncaught non-standard exception in user callback");
   }
+}
+
+// Overload for a handler snapshotted as a shared pointer rather than copied
+// out of its guarded member - see interface::SharedCallback. A null pointer
+// means "not registered", exactly as an empty std::function does above.
+template <typename Callback, typename... Args>
+void invoke_user_callback(std::string_view component, std::string_view operation,
+                          const std::shared_ptr<const Callback>& callback, Args&&... args) {
+  if (!callback) return;
+  invoke_user_callback(component, operation, *callback, std::forward<Args>(args)...);
 }
 
 }  // namespace detail

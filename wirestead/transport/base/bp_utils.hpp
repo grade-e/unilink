@@ -17,6 +17,7 @@
 #pragma once
 
 #include <atomic>
+#include <boost/asio/buffer.hpp>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -150,6 +151,81 @@ inline size_t variant_buffer_size(const T& buf) {
   } else {
     return buf.size();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Gather writes
+// ---------------------------------------------------------------------------
+//
+// Stream transports used to hand exactly one queued buffer to async_write(),
+// so a backlog of N queued messages cost N send syscalls even though they were
+// all ready at once. Draining several into one scatter-gather write collapses
+// those into one.
+//
+// Caps on how much of tx_ a single gather write may take. These matter for
+// BestEffort: buffers moved into the in-flight batch have left tx_ and can no
+// longer be dropped by maybe_flush_for_keep_latest(), so an unbounded batch
+// would let stale data survive a keep-latest trim that was supposed to discard
+// it. They also bound how much gets re-queued when a write fails.
+// 16, not an arbitrary round number: asio fills at most 16 buffers per
+// prepared_buffers (detail/consuming_buffers.hpp, max_buffers), which is also
+// the iovec count a single sendmsg gets. Staying at or under it keeps each
+// gather write inside one prepare. Larger batches were measured to corrupt the
+// stream - at 64 buffers, queued messages came out of order on the wire while
+// byte counts still matched, so only an ordering check catches it. Anything
+// above this needs that verified again, not assumed.
+inline constexpr size_t kMaxGatherBuffers = 16;
+inline constexpr size_t kMaxGatherBytes = 256 * 1024;
+
+// Returns a const_buffer over a BufferVariant alternative.
+template <typename T>
+inline ::boost::asio::const_buffer variant_const_buffer(const T& buf) {
+  if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>) {
+    return buf ? ::boost::asio::const_buffer(buf->data(), buf->size()) : ::boost::asio::const_buffer();
+  } else {
+    return ::boost::asio::const_buffer(buf.data(), buf.size());
+  }
+}
+// Moves buffers from the front of `tx` into `batch` (which is cleared first)
+// up to the caps above, filling `views` with the matching const_buffers.
+// Returns the total byte count, which is what the caller must subtract from
+// queue_bytes_ once the write completes.
+//
+// Must run on the strand, with no write already in flight: `views` describes
+// memory owned by `batch`, so neither may be touched until the write completes.
+//
+// `views` is handed to asio as an ordinary ConstBufferSequence, which asio
+// copies into the composed operation. An earlier version passed a non-owning
+// view to dodge that copy; asio's partial-write bookkeeping does not survive
+// an aliasing sequence, and it silently duplicated or stalled queued buffers.
+// One small copy per gather write is the right trade - it replaces N syscalls,
+// and with several messages per write it is fewer allocations than before.
+template <typename Deque, typename Batch>
+inline size_t take_gather_batch(Deque& tx, Batch& batch, std::vector<::boost::asio::const_buffer>& views) {
+  batch.clear();
+  views.clear();
+  size_t total = 0;
+  while (!tx.empty() && batch.size() < kMaxGatherBuffers && total < kMaxGatherBytes) {
+    const size_t n = std::visit([](const auto& b) { return variant_buffer_size(b); }, tx.front());
+    batch.push_back(std::move(tx.front()));
+    tx.pop_front();
+    total += n;
+  }
+  views.reserve(batch.size());
+  for (const auto& b : batch) {
+    views.push_back(std::visit([](const auto& x) { return variant_const_buffer(x); }, b));
+  }
+  return total;
+}
+
+// Returns a failed batch to the front of `tx` in its original order, so a
+// retry/teardown sees the queue exactly as it was.
+template <typename Deque, typename Batch>
+inline void return_gather_batch(Deque& tx, Batch& batch) {
+  for (auto it = batch.rbegin(); it != batch.rend(); ++it) {
+    tx.push_front(std::move(*it));
+  }
+  batch.clear();
 }
 
 // Identity projection: the default for maybe_flush_for_keep_latest()'s `project`

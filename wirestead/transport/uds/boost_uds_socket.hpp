@@ -41,6 +41,13 @@ class WIRESTEAD_API BoostUdsSocket : public interface::UdsSocketInterface {
                        std::function<void(const boost::system::error_code&, std::size_t)> handler) override;
   void async_write(const net::const_buffer& buffer,
                    std::function<void(const boost::system::error_code&, std::size_t)> handler) override;
+
+  // Real scatter-gather write: hands the sequence to asio, which issues one
+  // sendmsg/writev instead of one send per queued buffer.
+  void async_write(const std::vector<net::const_buffer>& buffers,
+                   std::function<void(const boost::system::error_code&, std::size_t)> handler) override {
+    net::async_write(socket_, buffers, std::move(handler));
+  }
   void async_connect(const uds::endpoint& endpoint,
                      std::function<void(const boost::system::error_code&)> handler) override;
   void shutdown(uds::socket::shutdown_type what, boost::system::error_code& ec) override;

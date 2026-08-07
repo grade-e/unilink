@@ -116,11 +116,15 @@ struct UdsServer::Impl {
   config::UdsServerConfig cfg_;
 
   concurrency::AtomicLinkState state_{base::LinkState::Idle};
-  OnBytes on_bytes_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots for the handlers the io thread copies out per received
+  // chunk - a std::function copy allocates whenever the target outgrows its
+  // small-object buffer. See interface::SharedCallback. The connect/disconnect
+  // handlers stay plain: they fire once per connection, not per chunk.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
   MultiClientConnectHandler on_multi_connect_;
-  MultiClientDataHandler on_multi_data_;
+  interface::SharedCallback<MultiClientDataHandler> on_multi_data_;
   MultiClientDisconnectHandler on_multi_disconnect_;
   diagnostics::RuntimeStatsCounters stats_;
 
@@ -507,18 +511,21 @@ bool UdsServer::async_try_write_shared(std::shared_ptr<const std::vector<uint8_t
 }
 
 void UdsServer::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 
 void UdsServer::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 
 void UdsServer::on_backpressure(OnBackpressure cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_bp_ = std::move(cb);
+  impl_->on_bp_ = std::move(shared);
 }
 
 bool UdsServer::broadcast(std::string_view message) {
@@ -595,8 +602,9 @@ void UdsServer::on_multi_connect(MultiClientConnectHandler handler) {
 }
 
 void UdsServer::on_multi_data(MultiClientDataHandler handler) {
+  auto shared = interface::share_callback(std::move(handler));
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
-  impl_->on_multi_data_ = std::move(handler);
+  impl_->on_multi_data_ = std::move(shared);
 }
 
 void UdsServer::on_multi_disconnect(MultiClientDisconnectHandler handler) {
@@ -628,21 +636,21 @@ void UdsServer::Impl::do_accept(std::shared_ptr<UdsServer> self) {
       auto session = std::make_shared<UdsServerSession>(
           *self->impl_->ioc_, std::move(socket), self->impl_->cfg_.backpressure_threshold,
           self->impl_->cfg_.idle_timeout_ms, self->impl_->cfg_.backpressure_strategy,
-          self->impl_->cfg_.enable_memory_pool);
+          self->impl_->cfg_.enable_memory_pool, self->impl_->cfg_.read_buffer_size);
 
       std::weak_ptr<UdsServer> weak_self = self;
       session->on_bytes([weak_self, client_id](memory::ConstByteSpan data) {
         auto s = weak_self.lock();
         if (!s) return;
-        MultiClientDataHandler data_handler;
-        OnBytes bytes_handler;
+        interface::SharedCallback<MultiClientDataHandler> data_handler;
+        interface::SharedCallback<OnBytes> bytes_handler;
         {
           std::lock_guard<std::mutex> lock(s->impl_->sessions_mutex_);
           data_handler = s->impl_->on_multi_data_;
           bytes_handler = s->impl_->on_bytes_;
         }
-        if (data_handler) data_handler(client_id, data);
-        if (bytes_handler) bytes_handler(data);
+        if (data_handler) (*data_handler)(client_id, data);
+        if (bytes_handler) (*bytes_handler)(data);
       });
 
       session->on_close([weak_self, client_id]() {
@@ -708,12 +716,12 @@ void UdsServer::Impl::do_accept(std::shared_ptr<UdsServer> self) {
 }
 
 void UdsServer::Impl::notify_state() {
-  OnState cb;
+  interface::SharedCallback<OnState> cb;
   {
     std::lock_guard<std::mutex> lock(sessions_mutex_);
     cb = on_state_;
   }
-  if (cb) cb(state_.get());
+  if (cb) (*cb)(state_.get());
 }
 
 }  // namespace transport

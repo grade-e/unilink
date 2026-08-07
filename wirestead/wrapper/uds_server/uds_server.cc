@@ -45,18 +45,22 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
   std::atomic<bool> client_limit_enabled_{false};
   std::atomic<int> socket_permissions_{-1};
   std::atomic<size_t> backpressure_threshold_{base::constants::DEFAULT_BACKPRESSURE_THRESHOLD};
+  std::atomic<size_t> read_buffer_size_{base::constants::DEFAULT_READ_BUFFER_SIZE};
   std::atomic<base::constants::BackpressureStrategy> backpressure_strategy_{
       base::constants::BackpressureStrategy::Reliable};
 
   ConnectionHandler client_connect_handler_{nullptr};
   ConnectionHandler client_disconnect_handler_{nullptr};
-  MessageHandler data_handler_{nullptr};
-  BatchMessageHandler data_batch_handler_{nullptr};
+  // Shared snapshots: the io thread copies one out per received chunk, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> data_handler_;
+  interface::SharedCallback<BatchMessageHandler> data_batch_handler_;
   ErrorHandler error_handler_{nullptr};
   std::function<void(size_t)> on_backpressure_{nullptr};
   FramerFactory framer_factory_{nullptr};
-  MessageHandler on_message_{nullptr};
-  BatchMessageHandler on_message_batch_{nullptr};
+  interface::SharedCallback<MessageHandler> on_message_;
+  interface::SharedCallback<BatchMessageHandler> on_message_batch_;
 
   std::unordered_map<ClientId, std::shared_ptr<framer::IFramer>> framers_;
 
@@ -217,6 +221,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
       config.max_connections =
           static_cast<int>(std::min(max_clients_.load(), static_cast<size_t>(base::constants::MAX_MAX_CONNECTIONS)));
       config.backpressure_threshold = backpressure_threshold_.load();
+      config.read_buffer_size = read_buffer_size_.load();
       config.backpressure_strategy = backpressure_strategy_.load();
       config.socket_permissions = socket_permissions_.load();
       server_ = factory::ChannelFactory::create(config, external_ioc_);
@@ -339,7 +344,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
         // locking level so it no longer blocks concurrent sends even
         // briefly.
         bool batch_mode;
-        MessageHandler handler;
+        interface::SharedCallback<MessageHandler> handler;
         std::shared_ptr<framer::IFramer> framer_to_push;
         {
           std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -356,7 +361,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
           // lock is only held for the queue mutation itself, not the
           // allocation.
           MessageContext ctx(id, memory::SafeDataBuffer(data_span));
-          BatchMessageHandler flush_handler;
+          interface::SharedCallback<BatchMessageHandler> flush_handler;
           std::vector<MessageContext> batch;
           {
             std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -371,8 +376,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
           }
           detail::invoke_user_callback("uds_server", "on_data_batch", flush_handler, batch);
         } else {
-          detail::invoke_user_callback("uds_server", "on_data", handler,
-                                       MessageContext(id, memory::SafeDataBuffer(data_span)));
+          detail::invoke_user_callback("uds_server", "on_data", handler, MessageContext(id, data_span));
         }
 
         if (framer_to_push) framer_to_push->push_bytes(data_span);
@@ -453,7 +457,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
       // #441: snapshot under a shared_lock (pure read), build the copy
       // before taking the exclusive lock for queue mutation.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         batch_mode = static_cast<bool>(on_message_batch_);
@@ -462,7 +466,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
 
       if (batch_mode) {
         MessageContext ctx(id, memory::SafeDataBuffer(msg));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -479,8 +483,7 @@ struct UdsServer::Impl : public std::enable_shared_from_this<Impl> {
         return;
       }
 
-      detail::invoke_user_callback("uds_server", "on_message", handler,
-                                   MessageContext(id, memory::SafeDataBuffer(msg)));
+      detail::invoke_user_callback("uds_server", "on_message", handler, MessageContext(id, msg));
     });
   }
 };
@@ -539,13 +542,13 @@ UdsServer& UdsServer::on_disconnect(ConnectionHandler handler) {
 
 UdsServer& UdsServer::on_data(MessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_handler_ = std::move(handler);
+  impl_->data_handler_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
 UdsServer& UdsServer::on_data_batch(BatchMessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_batch_handler_ = std::move(handler);
+  impl_->data_batch_handler_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
@@ -569,13 +572,13 @@ UdsServer& UdsServer::framer(FramerFactory factory) {
 
 UdsServer& UdsServer::on_message(MessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->on_message_ = std::move(handler);
+  impl_->on_message_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
 UdsServer& UdsServer::on_message_batch(BatchMessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->on_message_batch_ = std::move(handler);
+  impl_->on_message_batch_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
@@ -624,6 +627,11 @@ UdsServer& UdsServer::socket_permissions(int mode) {
 
 UdsServer& UdsServer::backpressure_threshold(size_t threshold) {
   impl_->backpressure_threshold_.store(threshold);
+  return *this;
+}
+
+UdsServer& UdsServer::read_buffer_size(size_t bytes) {
+  impl_->read_buffer_size_.store(bytes);
   return *this;
 }
 

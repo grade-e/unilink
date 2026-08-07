@@ -105,11 +105,19 @@ struct TcpClient::Impl {
   std::atomic<bool> terminal_state_notified_{false};
   std::atomic<bool> reconnect_pending_{false};
 
-  std::array<uint8_t, base::constants::DEFAULT_READ_BUFFER_SIZE> rx_{};
+  // Sized from cfg_.read_buffer_size in init() rather than being a fixed
+  // std::array, so a bulk-transfer workload can trade memory for fewer read
+  // completions and callback dispatches.
+  std::vector<uint8_t> rx_;
   std::deque<BufferVariant> tx_;
   std::deque<BufferVariant> pending_;
   std::atomic<size_t> pending_bytes_{0};
-  std::optional<BufferVariant> current_write_buffer_;
+  // Buffers handed to the in-flight write. Several at a time rather than one:
+  // a backlog of queued messages used to cost one send syscall each. `views_`
+  // points into `current_write_batch_`, so both stay untouched for the whole
+  // async_write - `writing_` is what guarantees that.
+  std::vector<BufferVariant> current_write_batch_;
+  std::vector<net::const_buffer> current_write_views_;
   bool writing_ = false;
   std::atomic<size_t> queue_bytes_{0};
   // Bytes accepted by a plain async_write_* call but not yet routed onto the
@@ -129,9 +137,12 @@ struct TcpClient::Impl {
   diagnostics::RuntimeStatsCounters stats_;
   unsigned first_retry_interval_ms_ = 100;
 
-  OnBytes on_bytes_;
-  OnState on_state_;
-  OnBackpressure on_bp_;
+  // Shared snapshots rather than plain std::functions: the io thread copies
+  // one out per received chunk, and a std::function copy allocates whenever
+  // the target outgrows its small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<OnBytes> on_bytes_;
+  interface::SharedCallback<OnState> on_state_;
+  interface::SharedCallback<OnBackpressure> on_bp_;
   mutable std::mutex callback_mtx_;
   std::atomic<bool> connected_{false};
   AtomicLinkState state_{LinkState::Idle};
@@ -163,6 +174,7 @@ struct TcpClient::Impl {
     queue_bytes_ = 0;
     pending_bytes_ = 0;
     cfg_.validate_and_clamp();
+    rx_.resize(cfg_.read_buffer_size);
     recalculate_backpressure_bounds();
     first_retry_interval_ms_ = std::min(first_retry_interval_ms_, cfg_.retry_interval_ms);
   }
@@ -571,17 +583,22 @@ bool TcpClient::async_try_write_shared(std::shared_ptr<const std::vector<uint8_t
   return true;
 }
 
+// Each setter builds the shared snapshot before taking the lock, so the
+// allocation stays outside the critical section the io thread contends on.
 void TcpClient::on_bytes(OnBytes cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bytes_ = std::move(cb);
+  impl_->on_bytes_ = std::move(shared);
 }
 void TcpClient::on_state(OnState cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_state_ = std::move(cb);
+  impl_->on_state_ = std::move(shared);
 }
 void TcpClient::on_backpressure(OnBackpressure cb) {
+  auto shared = interface::share_callback(std::move(cb));
   std::lock_guard<std::mutex> lock(impl_->callback_mtx_);
-  impl_->on_bp_ = std::move(cb);
+  impl_->on_bp_ = std::move(shared);
 }
 void TcpClient::set_backpressure_strategy(base::constants::BackpressureStrategy strategy) {
   impl_->bp_strategy_.store(strategy, std::memory_order_relaxed);
@@ -854,7 +871,7 @@ void TcpClient::Impl::start_read(std::shared_ptr<TcpClient> self, uint64_t seq) 
     if (n > 0) {
       self->impl_->reset_idle_timer(self, seq);
     }
-    OnBytes on_bytes;
+    interface::SharedCallback<OnBytes> on_bytes;
     {
       std::lock_guard<std::mutex> lock(self->impl_->callback_mtx_);
       on_bytes = self->impl_->on_bytes_;
@@ -864,7 +881,7 @@ void TcpClient::Impl::start_read(std::shared_ptr<TcpClient> self, uint64_t seq) 
 
     if (on_bytes) {
       try {
-        on_bytes(memory::ConstByteSpan(self->impl_->rx_.data(), n));
+        (*on_bytes)(memory::ConstByteSpan(self->impl_->rx_.data(), n));
       } catch (const std::exception& e) {
         WIRESTEAD_LOG_ERROR("tcp_client", "on_bytes", fmt::format("Exception in on_bytes callback: {}", e.what()));
         self->impl_->record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::COMMUNICATION, "on_bytes",
@@ -904,25 +921,11 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
   }
   writing_ = true;
 
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
-
-  auto& current = *current_write_buffer_;
-
-  auto queued_bytes = std::visit(
-      [](auto&& buf) -> size_t {
-        using Buffer = std::decay_t<decltype(buf)>;
-        if constexpr (std::is_same_v<Buffer, std::shared_ptr<const std::vector<uint8_t>>>) {
-          return buf ? buf->size() : 0;
-        } else {
-          return buf.size();
-        }
-      },
-      current);
+  const auto queued_bytes = queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
   auto on_write = [self, queued_bytes, seq](auto ec, std::size_t bytes_written) {
     if (ec == net::error::operation_aborted || seq != self->impl_->current_seq_.load()) {
-      self->impl_->current_write_buffer_.reset();
+      self->impl_->current_write_batch_.clear();
       self->impl_->queue_bytes_ =
           (self->impl_->queue_bytes_ > queued_bytes) ? (self->impl_->queue_bytes_ - queued_bytes) : 0;
       self->impl_->report_backpressure(self, self->impl_->queue_bytes_);
@@ -931,10 +934,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
     }
 
     if (ec) {
-      if (self->impl_->current_write_buffer_) {
-        self->impl_->tx_.push_front(std::move(*self->impl_->current_write_buffer_));
-      }
-      self->impl_->current_write_buffer_.reset();
+      queue_util::return_gather_batch(self->impl_->tx_, self->impl_->current_write_batch_);
 
       WIRESTEAD_LOG_ERROR("tcp_client", "do_write", fmt::format("Write failed: {}", ec.message()));
       self->impl_->record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::COMMUNICATION, "write", ec,
@@ -944,7 +944,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
       return;
     }
 
-    self->impl_->current_write_buffer_.reset();
+    self->impl_->current_write_batch_.clear();
     self->impl_->stats_.record_sent(bytes_written);
     if (bytes_written > 0) {
       self->impl_->reset_idle_timer(self, seq);
@@ -962,16 +962,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
     self->impl_->do_write(self, seq);
   };
 
-  std::visit(
-      [&](const auto& buf) {
-        using T = std::decay_t<decltype(buf)>;
-        if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>) {
-          net::async_write(socket_, net::buffer(buf->data(), buf->size()), on_write);
-        } else {
-          net::async_write(socket_, net::buffer(buf.data(), buf.size()), on_write);
-        }
-      },
-      current);
+  net::async_write(socket_, current_write_views_, on_write);
 }
 
 void TcpClient::Impl::handle_close(std::shared_ptr<TcpClient> self, uint64_t seq, const boost::system::error_code& ec) {
@@ -1129,15 +1120,16 @@ void TcpClient::Impl::report_backpressure(std::shared_ptr<TcpClient> self, size_
   if (stop_requested_.load() || stopping_.load()) return;
   observe_queue();
 
-  OnBackpressure on_bp;
+  interface::SharedCallback<OnBackpressure> on_bp;
   {
     std::lock_guard<std::mutex> lock(callback_mtx_);
     on_bp = on_bp_;
   }
+  static const OnBackpressure kNoCallback;
 
   auto f = bp_fields();
   queue_util::report_backpressure(
-      f, queued_bytes, on_bp, stats_,
+      f, queued_bytes, on_bp ? *on_bp : kNoCallback, stats_,
       [&]() -> size_t {
         const size_t moved = pending_bytes_.exchange(0);
         while (!pending_.empty()) {
@@ -1256,7 +1248,7 @@ void TcpClient::Impl::join_ioc_thread(bool allow_detach) {
 void TcpClient::Impl::notify_state() {
   if (stop_requested_.load() || stopping_.load()) return;
 
-  OnState on_state;
+  interface::SharedCallback<OnState> on_state;
   {
     std::lock_guard<std::mutex> lock(callback_mtx_);
     on_state = on_state_;
@@ -1264,7 +1256,7 @@ void TcpClient::Impl::notify_state() {
   if (!on_state) return;
 
   try {
-    on_state(state_.get());
+    (*on_state)(state_.get());
   } catch (const std::exception& e) {
     WIRESTEAD_LOG_ERROR("tcp_client", "on_state", "Exception in state callback: " + std::string(e.what()));
   } catch (...) {

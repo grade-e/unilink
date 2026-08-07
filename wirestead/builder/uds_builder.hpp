@@ -57,7 +57,9 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
         max_retries_(other.max_retries_),
         max_retries_set_(other.max_retries_set_),
         connection_timeout_(other.connection_timeout_),
-        connection_timeout_set_(other.connection_timeout_set_) {
+        connection_timeout_set_(other.connection_timeout_set_),
+        read_buffer_size_(other.read_buffer_size_),
+        read_buffer_size_set_(other.read_buffer_size_set_) {
     this->on_data_ = std::move(other.on_data_);
     this->on_error_ = std::move(other.on_error_);
     this->on_connect_ = std::move(other.on_connect_);
@@ -83,6 +85,15 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
   UdsClientBuilder<State>& retry_interval(std::chrono::milliseconds interval);
   UdsClientBuilder<State>& max_retries(int max_retries);
   UdsClientBuilder<State>& connection_timeout(std::chrono::milliseconds timeout);
+
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
+   */
+  UdsClientBuilder<State>& read_buffer_size(size_t bytes);
   UdsClientBuilder<State>& independent_context(bool use_independent = true);
 
  private:
@@ -99,6 +110,8 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
   bool max_retries_set_{false};
   std::chrono::milliseconds connection_timeout_;
   bool connection_timeout_set_{false};
+  size_t read_buffer_size_;
+  bool read_buffer_size_set_{false};
 };
 
 using UdsClientBuilderDefault = UdsClientBuilder<BuilderState::None>;
@@ -123,7 +136,9 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
         max_clients_(other.max_clients_),
         client_limit_enabled_(other.client_limit_enabled_),
         idle_timeout_(other.idle_timeout_),
-        idle_timeout_set_(other.idle_timeout_set_) {
+        idle_timeout_set_(other.idle_timeout_set_),
+        read_buffer_size_(other.read_buffer_size_),
+        read_buffer_size_set_(other.read_buffer_size_set_) {
     this->on_data_ = std::move(other.on_data_);
     this->on_error_ = std::move(other.on_error_);
     this->on_connect_ = std::move(other.on_connect_);
@@ -148,6 +163,15 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
   UdsServerBuilder<State>& auto_start(bool auto_start = true) override;
   UdsServerBuilder<State>& independent_context(bool use_independent = true);
   UdsServerBuilder<State>& idle_timeout(std::chrono::milliseconds timeout);
+
+  /**
+   * @brief Size of the userspace buffer each read fills, in bytes.
+   *
+   * Raising this reduces read completions and callback dispatches on bulk
+   * transfers, at the cost of that much memory per connection. Clamped to
+   * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
+   */
+  UdsServerBuilder<State>& read_buffer_size(size_t bytes);
   UdsServerBuilder<State>& max_clients(uint32_t max_clients);
   [[deprecated("Use max_clients(1) instead")]]
   UdsServerBuilder<State>& single_client();
@@ -166,6 +190,8 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
   bool client_limit_enabled_;
   std::chrono::milliseconds idle_timeout_;
   bool idle_timeout_set_;
+  size_t read_buffer_size_;
+  bool read_buffer_size_set_{false};
 };
 
 using UdsServerBuilderDefault = UdsServerBuilder<BuilderState::None>;

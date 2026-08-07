@@ -77,5 +77,27 @@ class WIRESTEAD_API Channel {
   virtual void on_state(OnState cb) = 0;
   virtual void on_backpressure(OnBackpressure cb) = 0;
 };
+
+// Snapshot type for a callback an implementation hands out to its io thread.
+//
+// The storage discipline above is unchanged - the mutex still guards the
+// member, and the callback is still invoked outside the lock. What changes is
+// the cost of the snapshot: copying a std::function heap-allocates whenever
+// the target does not fit its small-object buffer, and the receive path takes
+// one such copy per received chunk. Sharing an immutable copy turns that into
+// a refcount bump. The pointed-to callback is const, so a snapshot taken by
+// the io thread stays valid and unchanged even while a setter installs a
+// replacement, which is the same guarantee the copy provided (#436).
+template <typename Callback>
+using SharedCallback = std::shared_ptr<const Callback>;
+
+// Returns null for an empty callback, so a non-null SharedCallback always
+// holds something invocable and callers need only the pointer check.
+// Call this outside the lock - it allocates.
+template <typename Callback>
+SharedCallback<Callback> share_callback(Callback cb) {
+  if (!cb) return {};
+  return std::make_shared<const Callback>(std::move(cb));
+}
 }  // namespace interface
 }  // namespace wirestead

@@ -24,7 +24,7 @@ namespace transport {
 
 UdsServerSession::UdsServerSession(net::io_context& ioc, uds::socket sock, size_t backpressure_threshold,
                                    int idle_timeout_ms, base::constants::BackpressureStrategy strategy,
-                                   bool enable_memory_pool)
+                                   bool enable_memory_pool, size_t read_buffer_size)
     : ioc_(ioc),
       strand_(net::make_strand(ioc_)),
       idle_timer_(ioc),
@@ -35,11 +35,15 @@ UdsServerSession::UdsServerSession(net::io_context& ioc, uds::socket sock, size_
       bp_low_(backpressure_threshold > 1 ? backpressure_threshold / 2 : backpressure_threshold),
       bp_limit_(std::min(std::max(backpressure_threshold * 4, base::constants::DEFAULT_BACKPRESSURE_THRESHOLD),
                          base::constants::MAX_BUFFER_SIZE)),
-      idle_timeout_ms_(idle_timeout_ms) {}
+      idle_timeout_ms_(idle_timeout_ms) {
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
+}
 
 UdsServerSession::UdsServerSession(net::io_context& ioc, std::unique_ptr<interface::UdsSocketInterface> socket,
                                    size_t backpressure_threshold, int idle_timeout_ms,
-                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool)
+                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool,
+                                   size_t read_buffer_size)
     : ioc_(ioc),
       strand_(net::make_strand(ioc_)),
       idle_timer_(ioc),
@@ -50,7 +54,10 @@ UdsServerSession::UdsServerSession(net::io_context& ioc, std::unique_ptr<interfa
       bp_low_(backpressure_threshold > 1 ? backpressure_threshold / 2 : backpressure_threshold),
       bp_limit_(std::min(std::max(backpressure_threshold * 4, base::constants::DEFAULT_BACKPRESSURE_THRESHOLD),
                          base::constants::MAX_BUFFER_SIZE)),
-      idle_timeout_ms_(idle_timeout_ms) {}
+      idle_timeout_ms_(idle_timeout_ms) {
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
+}
 
 void UdsServerSession::start() {
   alive_ = true;
@@ -288,7 +295,7 @@ void UdsServerSession::on_close(OnClose cb) {
 
 void UdsServerSession::start_read() {
   socket_->async_read_some(
-      net::buffer(rx_),
+      net::buffer(rx_.data(), rx_.size()),
       net::bind_executor(strand_, [this, self = shared_from_this()](const boost::system::error_code& ec, size_t bytes) {
         if (closing_ || !alive_) return;
         if (ec) {
@@ -305,28 +312,16 @@ void UdsServerSession::start_read() {
 void UdsServerSession::do_write() {
   if (tx_.empty() || writing_) return;
   writing_ = true;
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
+  // Drain several queued buffers into one scatter-gather write rather than one
+  // send syscall per message. `writing_` keeps do_write() from re-entering.
+  const size_t bytes_to_write = queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
-  net::const_buffer buffer;
-  std::visit(
-      [&buffer](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, std::vector<uint8_t>>)
-          buffer = net::buffer(arg);
-        else if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>)
-          buffer = net::buffer(*arg);
-        else if constexpr (std::is_same_v<T, memory::PooledBuffer>)
-          buffer = net::buffer(arg.data(), arg.size());
-      },
-      *current_write_buffer_);
-
-  size_t bytes_to_write = buffer.size();
-  socket_->async_write(buffer, net::bind_executor(strand_, [this, self = shared_from_this(), bytes_to_write](
-                                                               const boost::system::error_code& ec, size_t written) {
+  socket_->async_write(current_write_views_,
+                       net::bind_executor(strand_, [this, self = shared_from_this(), bytes_to_write](
+                                                       const boost::system::error_code& ec, size_t written) {
                          if (closing_ || !alive_) return;
                          writing_ = false;
-                         current_write_buffer_ = std::nullopt;
+                         current_write_batch_.clear();
                          queue_bytes_ = (queue_bytes_ >= bytes_to_write) ? (queue_bytes_ - bytes_to_write) : 0;
                          report_backpressure(queue_bytes_);
 
@@ -358,7 +353,7 @@ void UdsServerSession::do_close() {
     auto f = bp_fields();
     queue_util::drain_and_clear_backpressure(f, on_bp_, [&]() {
       tx_.clear();
-      current_write_buffer_ = std::nullopt;
+      current_write_batch_.clear();
       queue_bytes_ = 0;
       pending_.clear();
       pending_bytes_ = 0;

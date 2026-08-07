@@ -36,11 +36,18 @@ struct UdsClientConfig {
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
   bool enable_memory_pool = true;
+  // Size of the per-connection userspace read buffer that each
+  // async_read_some() fills. Raising this reduces read completions and
+  // callback dispatches on bulk transfers, at the cost of that much memory
+  // per connection.
+  size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE;
 
   UdsClientConfig() = default;
 
   bool is_valid() const {
-    return util::InputValidator::is_valid_uds_path(socket_path) &&
+    return read_buffer_size >= base::constants::MIN_READ_BUFFER_SIZE &&
+           read_buffer_size <= base::constants::MAX_READ_BUFFER_SIZE &&
+           util::InputValidator::is_valid_uds_path(socket_path) &&
            retry_interval_ms >= base::constants::MIN_RETRY_INTERVAL_MS &&
            retry_interval_ms <= base::constants::MAX_RETRY_INTERVAL_MS &&
            connection_timeout_ms >= base::constants::MIN_CONNECTION_TIMEOUT_MS &&
@@ -51,6 +58,11 @@ struct UdsClientConfig {
   }
 
   void validate_and_clamp() {
+    if (read_buffer_size < base::constants::MIN_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MIN_READ_BUFFER_SIZE;
+    } else if (read_buffer_size > base::constants::MAX_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MAX_READ_BUFFER_SIZE;
+    }
     if (retry_interval_ms < base::constants::MIN_RETRY_INTERVAL_MS) {
       retry_interval_ms = base::constants::MIN_RETRY_INTERVAL_MS;
     } else if (retry_interval_ms > base::constants::MAX_RETRY_INTERVAL_MS) {
@@ -83,6 +95,11 @@ struct UdsServerConfig {
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
   bool enable_memory_pool = true;
+  // Size of the per-connection userspace read buffer that each
+  // async_read_some() fills. Raising this reduces read completions and
+  // callback dispatches on bulk transfers, at the cost of that much memory
+  // per connection.
+  size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE;
   // #437: 0 (unlimited) used to be the default, risking unbounded memory
   // growth from a large number of slow/malicious clients. 0 still means
   // unlimited for callers who explicitly opt into it.
@@ -95,7 +112,9 @@ struct UdsServerConfig {
   int socket_permissions = -1;
 
   bool is_valid() const {
-    return util::InputValidator::is_valid_uds_path(socket_path) &&
+    return read_buffer_size >= base::constants::MIN_READ_BUFFER_SIZE &&
+           read_buffer_size <= base::constants::MAX_READ_BUFFER_SIZE &&
+           util::InputValidator::is_valid_uds_path(socket_path) &&
            backpressure_threshold >= base::constants::MIN_BACKPRESSURE_THRESHOLD &&
            backpressure_threshold <= base::constants::MAX_BACKPRESSURE_THRESHOLD && max_connections >= 0 &&
            (idle_timeout_ms == 0 || (idle_timeout_ms >= static_cast<int>(base::constants::MIN_IDLE_TIMEOUT_MS) &&
@@ -104,6 +123,11 @@ struct UdsServerConfig {
   }
 
   void validate_and_clamp() {
+    if (read_buffer_size < base::constants::MIN_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MIN_READ_BUFFER_SIZE;
+    } else if (read_buffer_size > base::constants::MAX_READ_BUFFER_SIZE) {
+      read_buffer_size = base::constants::MAX_READ_BUFFER_SIZE;
+    }
     if (backpressure_threshold < base::constants::MIN_BACKPRESSURE_THRESHOLD) {
       backpressure_threshold = base::constants::MIN_BACKPRESSURE_THRESHOLD;
     } else if (backpressure_threshold > base::constants::MAX_BACKPRESSURE_THRESHOLD) {

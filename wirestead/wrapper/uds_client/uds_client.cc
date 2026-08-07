@@ -57,14 +57,17 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
   std::atomic<bool> started_{false};
   std::shared_ptr<bool> alive_marker_{std::make_shared<bool>(true)};
 
-  MessageHandler data_handler_{nullptr};
-  BatchMessageHandler data_batch_handler_{nullptr};
+  // Shared snapshots: the io thread copies one out per received chunk, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> data_handler_;
+  interface::SharedCallback<BatchMessageHandler> data_batch_handler_;
   ConnectionHandler connect_handler_{nullptr};
   ConnectionHandler disconnect_handler_{nullptr};
   ErrorHandler error_handler_{nullptr};
   std::function<void(size_t)> bp_handler_{nullptr};
-  MessageHandler message_handler_{nullptr};
-  BatchMessageHandler message_batch_handler_{nullptr};
+  interface::SharedCallback<MessageHandler> message_handler_;
+  interface::SharedCallback<BatchMessageHandler> message_batch_handler_;
 
   std::shared_ptr<framer::IFramer> framer_{nullptr};
 
@@ -80,6 +83,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
   int max_retries_ = base::constants::DEFAULT_MAX_RETRIES;
   std::chrono::milliseconds connection_timeout_{base::constants::DEFAULT_CONNECTION_TIMEOUT_MS};
   size_t backpressure_threshold_ = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
+  size_t read_buffer_size_ = base::constants::DEFAULT_READ_BUFFER_SIZE;
   // Atomic rather than mutex-guarded: read from the send()/send_line() fast
   // path on arbitrary caller threads while the setter can be called
   // concurrently from any other thread (#436).
@@ -186,6 +190,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       cfg.max_retries = max_retries_;
       cfg.connection_timeout_ms = static_cast<unsigned>(connection_timeout_.count());
       cfg.backpressure_threshold = backpressure_threshold_;
+      cfg.read_buffer_size = read_buffer_size_;
       cfg.backpressure_strategy = backpressure_strategy_;
 
       if (use_external_context_) {
@@ -456,7 +461,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       // unique_lock) - this is a pure read, matching try_send's locking
       // level so it no longer blocks concurrent sends even briefly.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       std::shared_ptr<framer::IFramer> framer_to_push;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -470,7 +475,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
         // lock is only held for the queue mutation itself, not the
         // allocation.
         MessageContext ctx(0, memory::SafeDataBuffer(data));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -485,7 +490,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
         }
         detail::invoke_user_callback("uds_client", "on_data_batch", flush_handler, batch);
       } else {
-        detail::invoke_user_callback("uds_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("uds_client", "on_data", handler, MessageContext(0, data));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -514,7 +519,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
       // #441: snapshot under a shared_lock (pure read), build the copy
       // before taking the exclusive lock for queue mutation.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         batch_mode = static_cast<bool>(message_batch_handler_);
@@ -523,7 +528,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
 
       if (batch_mode) {
         MessageContext ctx(0, memory::SafeDataBuffer(msg));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -540,7 +545,7 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
         return;
       }
 
-      detail::invoke_user_callback("uds_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
+      detail::invoke_user_callback("uds_client", "on_message", handler, MessageContext(0, msg));
     });
   }
 
@@ -552,13 +557,13 @@ struct UdsClient::Impl : public std::enable_shared_from_this<Impl> {
 
   void on_message(MessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_handler_ = std::move(handler);
+    message_handler_ = interface::share_callback(std::move(handler));
     if (framer_) attach_framer_callback();
   }
 
   void on_message_batch(BatchMessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_batch_handler_ = std::move(handler);
+    message_batch_handler_ = interface::share_callback(std::move(handler));
     if (framer_) attach_framer_callback();
   }
 };
@@ -608,13 +613,13 @@ void UdsClient::reset_stats() { impl_->reset_stats(); }
 
 UdsClient& UdsClient::on_data(MessageHandler handler) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_handler_ = std::move(handler);
+  impl_->data_handler_ = interface::share_callback(std::move(handler));
   return *this;
 }
 
 UdsClient& UdsClient::on_data_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_batch_handler_ = std::move(h);
+  impl_->data_batch_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 
@@ -690,6 +695,12 @@ UdsClient& UdsClient::connection_timeout(std::chrono::milliseconds timeout) {
 UdsClient& UdsClient::backpressure_threshold(size_t threshold) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->backpressure_threshold_ = threshold;
+  return *this;
+}
+
+UdsClient& UdsClient::read_buffer_size(size_t bytes) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->read_buffer_size_ = bytes;
   return *this;
 }
 

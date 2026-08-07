@@ -28,6 +28,20 @@ client->on_data([](const wirestead::MessageContext& ctx) {
 
 For binary payloads, use `data_as_vector()` before the callback returns.
 
+Copying the context object itself is also safe. A `MessageContext` delivered to
+`on_data`/`on_message` borrows the transport's receive buffer so the callback
+costs no allocation, but a copy always takes ownership of the payload, so a
+copy stays valid after the callback returns:
+
+```cpp
+client->on_data([&](const wirestead::MessageContext& ctx) {
+    queue.push_back(ctx);  // copy — owns its payload, safe to keep
+});
+```
+
+Only the view returned by `data()` is callback-scoped. Contexts delivered to
+the batch handlers (`on_data_batch`/`on_message_batch`) always own their data.
+
 ## Do not call a blocking send from within a callback
 
 `on_data`/`on_message` (and every other) callback runs on the channel's own

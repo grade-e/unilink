@@ -57,14 +57,17 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
   std::atomic<bool> started_{false};
   std::shared_ptr<bool> alive_marker_{std::make_shared<bool>(true)};
 
-  MessageHandler data_handler_{nullptr};
-  BatchMessageHandler data_batch_handler_{nullptr};
+  // Shared snapshots: the io thread copies one out per received chunk, and a
+  // std::function copy allocates whenever the user handler outgrows its
+  // small-object buffer. See interface::SharedCallback.
+  interface::SharedCallback<MessageHandler> data_handler_;
+  interface::SharedCallback<BatchMessageHandler> data_batch_handler_;
   ConnectionHandler connect_handler_{nullptr};
   ConnectionHandler disconnect_handler_{nullptr};
   ErrorHandler error_handler_{nullptr};
   std::function<void(size_t)> bp_handler_{nullptr};
-  MessageHandler message_handler_{nullptr};
-  BatchMessageHandler message_batch_handler_{nullptr};
+  interface::SharedCallback<MessageHandler> message_handler_;
+  interface::SharedCallback<BatchMessageHandler> message_batch_handler_;
 
   std::shared_ptr<framer::IFramer> framer_{nullptr};
 
@@ -91,6 +94,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
   bool keep_alive_ = base::constants::DEFAULT_KEEP_ALIVE;
   size_t send_buffer_size_ = 0;
   size_t receive_buffer_size_ = 0;
+  size_t read_buffer_size_ = base::constants::DEFAULT_READ_BUFFER_SIZE;
 
   Impl(const std::string& host, uint16_t port) : host_(host), port_(port), started_(false) {}
 
@@ -204,6 +208,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       config.keep_alive = keep_alive_;
       config.send_buffer_size = send_buffer_size_;
       config.receive_buffer_size = receive_buffer_size_;
+      config.read_buffer_size = read_buffer_size_;
       channel_ = factory::ChannelFactory::create(config, external_ioc_);
       setup_internal_handlers();
     }
@@ -446,7 +451,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       // unique_lock) - this is a pure read, matching try_send's locking
       // level so it no longer blocks concurrent sends even briefly.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       std::shared_ptr<framer::IFramer> framer_to_push;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -460,7 +465,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         // lock is only held for the queue mutation itself, not the
         // allocation.
         MessageContext ctx(0, memory::SafeDataBuffer(data));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -475,7 +480,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         }
         detail::invoke_user_callback("tcp_client", "on_data_batch", flush_handler, batch);
       } else {
-        detail::invoke_user_callback("tcp_client", "on_data", handler, MessageContext(0, memory::SafeDataBuffer(data)));
+        detail::invoke_user_callback("tcp_client", "on_data", handler, MessageContext(0, data));
       }
 
       if (framer_to_push) framer_to_push->push_bytes(data);
@@ -541,7 +546,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       // #441: snapshot under a shared_lock (pure read), build the copy
       // before taking the exclusive lock for queue mutation.
       bool batch_mode;
-      MessageHandler handler;
+      interface::SharedCallback<MessageHandler> handler;
       {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         batch_mode = static_cast<bool>(message_batch_handler_);
@@ -550,7 +555,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
 
       if (batch_mode) {
         MessageContext ctx(0, memory::SafeDataBuffer(msg));
-        BatchMessageHandler flush_handler;
+        interface::SharedCallback<BatchMessageHandler> flush_handler;
         std::vector<MessageContext> batch;
         {
           std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -567,7 +572,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
         return;
       }
 
-      detail::invoke_user_callback("tcp_client", "on_message", handler, MessageContext(0, memory::SafeDataBuffer(msg)));
+      detail::invoke_user_callback("tcp_client", "on_message", handler, MessageContext(0, msg));
     });
   }
 
@@ -579,13 +584,13 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
 
   void on_message(MessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_handler_ = std::move(handler);
+    message_handler_ = interface::share_callback(std::move(handler));
     if (framer_) attach_framer_callback();
   }
 
   void on_message_batch(BatchMessageHandler handler) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
-    message_batch_handler_ = std::move(handler);
+    message_batch_handler_ = interface::share_callback(std::move(handler));
     if (framer_) attach_framer_callback();
   }
 };
@@ -623,12 +628,12 @@ void TcpClient::reset_stats() { impl_->reset_stats(); }
 
 TcpClient& TcpClient::on_data(MessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_handler_ = std::move(h);
+  impl_->data_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 TcpClient& TcpClient::on_data_batch(BatchMessageHandler h) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
-  impl_->data_batch_handler_ = std::move(h);
+  impl_->data_batch_handler_ = interface::share_callback(std::move(h));
   return *this;
 }
 TcpClient& TcpClient::on_connect(ConnectionHandler h) {
@@ -773,6 +778,12 @@ TcpClient& TcpClient::send_buffer_size(size_t bytes) {
 TcpClient& TcpClient::receive_buffer_size(size_t bytes) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->receive_buffer_size_ = bytes;
+  return *this;
+}
+
+TcpClient& TcpClient::read_buffer_size(size_t bytes) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->read_buffer_size_ = bytes;
   return *this;
 }
 

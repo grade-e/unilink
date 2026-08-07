@@ -34,7 +34,8 @@ UdsClientBuilder<State>::UdsClientBuilder(const std::string& socket_path)
       independent_context_(false),
       retry_interval_(base::constants::DEFAULT_RETRY_INTERVAL_MS),
       max_retries_(base::constants::DEFAULT_MAX_RETRIES),
-      connection_timeout_(base::constants::DEFAULT_CONNECTION_TIMEOUT_MS) {
+      connection_timeout_(base::constants::DEFAULT_CONNECTION_TIMEOUT_MS),
+      read_buffer_size_(base::constants::DEFAULT_READ_BUFFER_SIZE) {
   if (socket_path.empty()) throw diagnostics::BuilderException("Socket path cannot be empty");
 
   // Ensure background IO service is running
@@ -61,6 +62,7 @@ std::unique_ptr<wrapper::UdsClient> UdsClientBuilder<State>::build() {
   if (retry_interval_set_) client->retry_interval(retry_interval_);
   if (max_retries_set_) client->max_retries(max_retries_);
   if (connection_timeout_set_) client->connection_timeout(connection_timeout_);
+  if (read_buffer_size_set_) client->read_buffer_size(read_buffer_size_);
 
   if (this->bp_strategy_set_) client->backpressure_strategy(this->bp_strategy_);
   client->backpressure_threshold(this->get_effective_backpressure_threshold());
@@ -110,6 +112,13 @@ UdsClientBuilder<State>& UdsClientBuilder<State>::connection_timeout(std::chrono
 }
 
 template <uint32_t State>
+UdsClientBuilder<State>& UdsClientBuilder<State>::read_buffer_size(size_t bytes) {
+  read_buffer_size_ = bytes;
+  read_buffer_size_set_ = true;
+  return *this;
+}
+
+template <uint32_t State>
 UdsClientBuilder<State>& UdsClientBuilder<State>::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
@@ -125,7 +134,8 @@ UdsServerBuilder<State>::UdsServerBuilder(const std::string& socket_path)
       max_clients_(0),
       client_limit_enabled_(false),
       idle_timeout_(0),
-      idle_timeout_set_(false) {
+      idle_timeout_set_(false),
+      read_buffer_size_(base::constants::DEFAULT_READ_BUFFER_SIZE) {
   if (socket_path.empty()) throw diagnostics::BuilderException("Socket path cannot be empty");
 
   // Ensure background IO service is running
@@ -155,6 +165,7 @@ std::unique_ptr<wrapper::UdsServer> UdsServerBuilder<State>::build() {
   if (idle_timeout_set_) {
     server->idle_timeout(idle_timeout_);
   }
+  if (read_buffer_size_set_) server->read_buffer_size(read_buffer_size_);
 
   if (this->bp_strategy_set_) server->backpressure_strategy(this->bp_strategy_);
   server->backpressure_threshold(this->get_effective_backpressure_threshold());
@@ -193,6 +204,13 @@ template <uint32_t State>
 UdsServerBuilder<State>& UdsServerBuilder<State>::idle_timeout(std::chrono::milliseconds timeout) {
   idle_timeout_ = timeout;
   idle_timeout_set_ = true;
+  return *this;
+}
+
+template <uint32_t State>
+UdsServerBuilder<State>& UdsServerBuilder<State>::read_buffer_size(size_t bytes) {
+  read_buffer_size_ = bytes;
+  read_buffer_size_set_ = true;
   return *this;
 }
 

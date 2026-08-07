@@ -28,7 +28,7 @@ namespace transport {
 
 TcpServerSession::TcpServerSession(net::io_context& ioc, tcp::socket sock, size_t backpressure_threshold,
                                    int idle_timeout_ms, base::constants::BackpressureStrategy strategy,
-                                   bool enable_memory_pool)
+                                   bool enable_memory_pool, size_t read_buffer_size)
     : ioc_(ioc),
       strand_(ioc.get_executor()),
       idle_timer_(ioc),
@@ -45,11 +45,14 @@ TcpServerSession::TcpServerSession(net::io_context& ioc, tcp::socket sock, size_
                        base::constants::MAX_BUFFER_SIZE);
   bp_low_ = bp_high_ > 1 ? bp_high_ / 2 : bp_high_;
   if (bp_low_ == 0) bp_low_ = 1;
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
 }
 
 TcpServerSession::TcpServerSession(net::io_context& ioc, std::unique_ptr<interface::TcpSocketInterface> socket,
                                    size_t backpressure_threshold, int idle_timeout_ms,
-                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool)
+                                   base::constants::BackpressureStrategy strategy, bool enable_memory_pool,
+                                   size_t read_buffer_size)
     : ioc_(ioc),
       strand_(ioc.get_executor()),
       idle_timer_(ioc),
@@ -66,6 +69,8 @@ TcpServerSession::TcpServerSession(net::io_context& ioc, std::unique_ptr<interfa
                        base::constants::MAX_BUFFER_SIZE);
   bp_low_ = bp_high_ > 1 ? bp_high_ / 2 : bp_high_;
   if (bp_low_ == 0) bp_low_ = 1;
+  rx_.resize(
+      std::clamp(read_buffer_size, base::constants::MIN_READ_BUFFER_SIZE, base::constants::MAX_READ_BUFFER_SIZE));
 }
 
 void TcpServerSession::start() {
@@ -392,17 +397,14 @@ void TcpServerSession::do_write() {
   writing_ = true;
   auto self = shared_from_this();
 
-  // Move buffer out of queue immediately to ensure lifetime safety during async op
-  // Optimization: Move into current_write_buffer_ to keep it alive during async op
-  // without allocating a shared_ptr control block.
-  current_write_buffer_ = std::move(tx_.front());
-  tx_.pop_front();
-
-  auto& current = *current_write_buffer_;
+  // Drain several queued buffers into one scatter-gather write rather than one
+  // send syscall per message. The batch and its views stay alive for the whole
+  // operation because `writing_` keeps do_write() from re-entering.
+  queue_util::take_gather_batch(tx_, current_write_batch_, current_write_views_);
 
   auto on_write = [self](const boost::system::error_code& ec, std::size_t n) {
-    // Release the buffer immediately
-    self->current_write_buffer_.reset();
+    // Release the buffers immediately
+    self->current_write_batch_.clear();
 
     if (self->closing_ || !self->alive_) return;
     if (self->queue_bytes_ >= n) {
@@ -421,16 +423,7 @@ void TcpServerSession::do_write() {
     self->do_write();
   };
 
-  std::visit(
-      [&](const auto& buf) {
-        using T = std::decay_t<decltype(buf)>;
-        if constexpr (std::is_same_v<T, std::shared_ptr<const std::vector<uint8_t>>>) {
-          socket_->async_write(net::buffer(buf->data(), buf->size()), net::bind_executor(strand_, on_write));
-        } else {
-          socket_->async_write(net::buffer(buf.data(), buf.size()), net::bind_executor(strand_, on_write));
-        }
-      },
-      current);
+  socket_->async_write(current_write_views_, net::bind_executor(strand_, on_write));
 }
 
 void TcpServerSession::do_close() {

@@ -6,6 +6,57 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Added
+
+- `read_buffer_size` on the TCP and UDS configs, wrappers, and builders. This
+  is the userspace buffer each read fills, and it was previously a
+  compile-time-fixed 4 KiB `std::array` per connection with no way to change
+  it — `receive_buffer_size` only ever set the kernel's `SO_RCVBUF`. Raising it
+  cuts read completions and callback dispatches on bulk transfers. The default
+  is unchanged at 4 KiB, and values are clamped to
+  `[MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]` (512 B to 1 MiB). The ceiling
+  is far below `MAX_SOCKET_BUFFER_SIZE` because this buffer is per connection
+  and a server multiplies it by `max_connections`.
+
+### Changed
+
+- Stream transports now drain several queued buffers into one scatter-gather
+  write instead of one send syscall per queued message. Measured on a TCP
+  loopback burst of 16386 small messages, send syscalls drop from 16386 to
+  1025. The socket interfaces gained a buffer-sequence `async_write` overload
+  with a correct default implementation, so existing implementations keep
+  working unchanged.
+- Removed the per-chunk heap allocation and copy from the receive path.
+  `MessageContext` now borrows the payload for the single-shot `on_data()` and
+  `on_message()` dispatch instead of copying it into an owned buffer; only the
+  batch handlers, whose contexts are queued until the batch is flushed, still
+  own their data. Measured on a TCP loopback echo, allocations on the receiving
+  io thread drop from 3 to 2 per callback. The documented callback contract is
+  unchanged - `docs/callbacks.md` already scoped the view to the callback - and
+  copying a `MessageContext` still takes ownership, so keeping one past the
+  callback remains safe.
+- `MessageContext::safe_data()` materializes its buffer on demand when the
+  context borrows its payload. It is now the only accessor that copies; prefer
+  `data()`, `data_as_string()`, or `data_as_vector()`.
+- Transports and wrappers now snapshot their callbacks through a shared pointer
+  instead of copying a `std::function` on every dispatch. A `std::function`
+  copy heap-allocates whenever the target outgrows its small-object buffer, and
+  the receive path took one such copy per chunk at each layer. Storage
+  discipline is unchanged - the same mutex guards the member and the callback
+  is still invoked outside the lock. Together with the change above, the TCP
+  client receive path goes from 5.06 to 0.06 allocations per callback, measured
+  on a loopback echo with a handler capturing 64 bytes; receiving is now
+  allocation-free.
+
+### Fixed
+
+- `UdpChannel::on_bytes_from()` now takes `callback_mtx_` when installing the
+  callback. It assigned without the lock while the strand-confined read site
+  took it, against the member's own documented invariant, so replacing the
+  callback on a running channel raced with the receive path.
+
 ## v0.9.2 - 2026-08-01
 
 ### Added
