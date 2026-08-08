@@ -22,11 +22,16 @@ venv.bak/
 .codex
 
 # agent-rules (local only)
-AGENTS.md
-CLAUDE.md
-GEMINI.md
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.agent-rules/bases/
+/.codex/skills/investigate-bug/
+/.claude/skills/investigate-bug/
+/.codex/skills/review-change/
+/.claude/skills/review-change/
+/.codex/skills/validate-change/
+/.claude/skills/validate-change/
+/.codex/skills/prepare-commit/
+/.claude/skills/prepare-commit/
 
-# agent-rules (local only)
-/.agent-rules/bases/AGENTS.md
-/.agent-rules/bases/CLAUDE.md
-/.agent-rules/bases/GEMINI.md
