@@ -35,50 +35,9 @@ namespace builder {
 /**
  * @brief Modernized Builder for Serial
  */
-template <uint32_t State = BuilderState::None>
-class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, SerialBuilder<State>, State> {
+class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, SerialBuilder> {
  public:
-  template <uint32_t NewState>
-  using Rebind = SerialBuilder<NewState>;
-
   SerialBuilder(const std::string& device, uint32_t baud_rate);
-
-  // Allow conversion between states
-  template <uint32_t OtherState>
-  SerialBuilder(SerialBuilder<OtherState>&& other) noexcept
-      : device_(std::move(other.device_)),
-        baud_rate_(other.baud_rate_),
-        auto_start_(other.auto_start_),
-        independent_context_(other.independent_context_),
-        shared_context_(other.shared_context_),
-        retry_interval_ms_(other.retry_interval_ms_),
-        retry_interval_set_(other.retry_interval_set_),
-        char_size_(other.char_size_),
-        char_size_set_(other.char_size_set_),
-        stop_bits_(other.stop_bits_),
-        stop_bits_set_(other.stop_bits_set_),
-        parity_(other.parity_),
-        parity_set_(other.parity_set_),
-        flow_(other.flow_),
-        flow_set_(other.flow_set_),
-        reopen_on_error_(other.reopen_on_error_),
-        reopen_on_error_set_(other.reopen_on_error_set_),
-        read_chunk_(other.read_chunk_),
-        read_chunk_set_(other.read_chunk_set_) {
-    this->on_data_ = std::move(other.on_data_);
-    this->on_error_ = std::move(other.on_error_);
-    this->on_connect_ = std::move(other.on_connect_);
-    this->on_disconnect_ = std::move(other.on_disconnect_);
-    this->on_message_ = std::move(other.on_message_);
-    this->on_data_batch_ = std::move(other.on_data_batch_);
-    this->on_message_batch_ = std::move(other.on_message_batch_);
-    this->on_backpressure_ = std::move(other.on_backpressure_);
-    this->framer_factory_ = std::move(other.framer_factory_);
-    this->bp_strategy_ = other.bp_strategy_;
-    this->bp_threshold_ = other.bp_threshold_;
-    this->bp_strategy_set_ = other.bp_strategy_set_;
-    this->bp_threshold_set_ = other.bp_threshold_set_;
-  }
 
   // Delete copy
   SerialBuilder(const SerialBuilder&) = delete;
@@ -86,30 +45,27 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
 
   std::unique_ptr<wrapper::Serial> build() override;
 
-  SerialBuilder<State>& auto_start(bool auto_start = true) override;
-  SerialBuilder<State>& char_size(unsigned int size);
-  SerialBuilder<State>& data_bits(unsigned int size) { return char_size(size); }
-  SerialBuilder<State>& stop_bits(unsigned int bits);
-  SerialBuilder<State>& parity(config::SerialConfig::Parity p);
-  SerialBuilder<State>& parity(const std::string& p);
-  SerialBuilder<State>& flow_control(config::SerialConfig::Flow f);
-  SerialBuilder<State>& flow_control(const std::string& f);
+  SerialBuilder& auto_start(bool auto_start = true) override;
+  SerialBuilder& char_size(unsigned int size);
+  SerialBuilder& data_bits(unsigned int size) { return char_size(size); }
+  SerialBuilder& stop_bits(unsigned int bits);
+  SerialBuilder& parity(config::SerialConfig::Parity p);
+  SerialBuilder& parity(const std::string& p);
+  SerialBuilder& flow_control(config::SerialConfig::Flow f);
+  SerialBuilder& flow_control(const std::string& f);
   // Bytes each read fills. The TCP and UDS builders call the same knob
   // read_buffer_size(); serial named it read_chunk before those existed.
-  SerialBuilder<State>& read_chunk(size_t bytes);
-  SerialBuilder<State>& reopen_on_error(bool enable = true);
-  SerialBuilder<State>& retry_interval(std::chrono::milliseconds interval);
-  SerialBuilder<State>& independent_context(bool use_independent = true);
+  SerialBuilder& read_chunk(size_t bytes);
+  SerialBuilder& reopen_on_error(bool enable = true);
+  SerialBuilder& retry_interval(std::chrono::milliseconds interval);
+  SerialBuilder& independent_context(bool use_independent = true);
   // Opt into the shared IoContextManager singleton instead of the default
   // dedicated io_context + thread (#440). Only meaningful for deliberately
   // trading per-instance parallelism for reduced thread/memory overhead
   // across many instances in one process; most callers should not need this.
-  SerialBuilder<State>& shared_context(bool use_shared = true);
+  SerialBuilder& shared_context(bool use_shared = true);
 
  private:
-  template <uint32_t S>
-  friend class SerialBuilder;
-
   std::string device_;
   uint32_t baud_rate_;
   bool auto_start_;
@@ -132,7 +88,7 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   bool read_chunk_set_{false};
 };
 
-using SerialBuilderDefault = SerialBuilder<BuilderState::None>;
+using SerialBuilderDefault = SerialBuilder;
 
 #ifdef _MSC_VER
 #pragma warning(pop)

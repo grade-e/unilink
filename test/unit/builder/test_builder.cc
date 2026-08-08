@@ -172,7 +172,7 @@ TEST_F(BuilderTest, TcpClientBuilderRejectsInvalidConfiguration) {
 }
 
 TEST_F(BuilderTest, TcpClientBuilderAllowsMissingCallbacks) {
-  auto client = builder::TcpClientBuilder<>("127.0.0.1", test_port_).build();
+  auto client = builder::TcpClientBuilder("127.0.0.1", test_port_).build();
   ASSERT_NE(client, nullptr);
   EXPECT_FALSE(client->connected());
 }
@@ -233,7 +233,7 @@ TEST_F(BuilderTest, SerialBuilderRejectsInvalidConfiguration) {
 }
 
 TEST_F(BuilderTest, SerialBuilderAllowsMissingCallbacks) {
-  auto serial = builder::SerialBuilder<>(nullDevice(), 9600).build();
+  auto serial = builder::SerialBuilder(nullDevice(), 9600).build();
   ASSERT_NE(serial, nullptr);
   EXPECT_FALSE(serial->connected());
 }
@@ -328,7 +328,7 @@ TEST_F(BuilderTest, TcpServerBuilderRejectsInvalidConfiguration) {
 }
 
 TEST_F(BuilderTest, TcpServerBuilderAllowsMissingCallbacks) {
-  auto server = builder::TcpServerBuilder<>(test_port_).build();
+  auto server = builder::TcpServerBuilder(test_port_).build();
   ASSERT_NE(server, nullptr);
   EXPECT_FALSE(server->listening());
 }

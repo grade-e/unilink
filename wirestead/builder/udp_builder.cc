@@ -27,11 +27,9 @@ namespace builder {
 
 // UdpClientBuilder implementation
 
-template <uint32_t State>
-UdpClientBuilder<State>::UdpClientBuilder() : UdpClientBuilder(0) {}
+UdpClientBuilder::UdpClientBuilder() : UdpClientBuilder(0) {}
 
-template <uint32_t State>
-UdpClientBuilder<State>::UdpClientBuilder(uint16_t local_port)
+UdpClientBuilder::UdpClientBuilder(uint16_t local_port)
     : local_port_(local_port),
       bind_address_("0.0.0.0"),
       remote_host_(""),
@@ -46,8 +44,7 @@ UdpClientBuilder<State>::UdpClientBuilder(uint16_t local_port)
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::UdpClient> UdpClientBuilder<State>::build() {
+std::unique_ptr<wrapper::UdpClient> UdpClientBuilder::build() {
   std::unique_ptr<wrapper::UdpClient> client;
   config::UdpConfig cfg;
   cfg.bind_address = bind_address_;
@@ -93,26 +90,22 @@ std::unique_ptr<wrapper::UdpClient> UdpClientBuilder<State>::build() {
   return client;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::auto_start(bool auto_start) {
+UdpClientBuilder& UdpClientBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::local_port(uint16_t port) {
+UdpClientBuilder& UdpClientBuilder::local_port(uint16_t port) {
   local_port_ = port;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::bind_address(const std::string& address) {
+UdpClientBuilder& UdpClientBuilder::bind_address(const std::string& address) {
   bind_address_ = address;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::remote_endpoint(const std::string& host, uint16_t port) {
+UdpClientBuilder& UdpClientBuilder::remote_endpoint(const std::string& host, uint16_t port) {
   boost::system::error_code ec;
   boost::asio::ip::make_address(host, ec);
   if (ec) {
@@ -123,43 +116,36 @@ UdpClientBuilder<State>& UdpClientBuilder<State>::remote_endpoint(const std::str
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::broadcast(bool enable) {
+UdpClientBuilder& UdpClientBuilder::broadcast(bool enable) {
   enable_broadcast_ = enable;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::reuse_address(bool enable) {
+UdpClientBuilder& UdpClientBuilder::reuse_address(bool enable) {
   reuse_address_ = enable;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::independent_context(bool use_independent) {
+UdpClientBuilder& UdpClientBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::send_buffer_size(size_t bytes) {
+UdpClientBuilder& UdpClientBuilder::send_buffer_size(size_t bytes) {
   send_buffer_size_ = bytes;
   return *this;
 }
 
-template <uint32_t State>
-UdpClientBuilder<State>& UdpClientBuilder<State>::receive_buffer_size(size_t bytes) {
+UdpClientBuilder& UdpClientBuilder::receive_buffer_size(size_t bytes) {
   receive_buffer_size_ = bytes;
   return *this;
 }
 
 // UdpServerBuilder implementation
 
-template <uint32_t State>
-UdpServerBuilder<State>::UdpServerBuilder() : UdpServerBuilder(0) {}
+UdpServerBuilder::UdpServerBuilder() : UdpServerBuilder(0) {}
 
-template <uint32_t State>
-UdpServerBuilder<State>::UdpServerBuilder(uint16_t local_port)
+UdpServerBuilder::UdpServerBuilder(uint16_t local_port)
     : local_port_(local_port),
       bind_address_("0.0.0.0"),
       auto_start_(false),
@@ -172,8 +158,7 @@ UdpServerBuilder<State>::UdpServerBuilder(uint16_t local_port)
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::UdpServer> UdpServerBuilder<State>::build() {
+std::unique_ptr<wrapper::UdpServer> UdpServerBuilder::build() {
   std::unique_ptr<wrapper::UdpServer> server;
   config::UdpConfig cfg;
   cfg.bind_address = bind_address_;
@@ -224,77 +209,59 @@ std::unique_ptr<wrapper::UdpServer> UdpServerBuilder<State>::build() {
   return server;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::auto_start(bool auto_start) {
+UdpServerBuilder& UdpServerBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::local_port(uint16_t port) {
+UdpServerBuilder& UdpServerBuilder::local_port(uint16_t port) {
   local_port_ = port;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::bind_address(const std::string& address) {
+UdpServerBuilder& UdpServerBuilder::bind_address(const std::string& address) {
   bind_address_ = address;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::max_clients(uint32_t max) {
+UdpServerBuilder& UdpServerBuilder::max_clients(uint32_t max) {
   max_clients_ = max;
   client_limit_enabled_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::broadcast(bool enable) {
+UdpServerBuilder& UdpServerBuilder::broadcast(bool enable) {
   enable_broadcast_ = enable;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::reuse_address(bool enable) {
+UdpServerBuilder& UdpServerBuilder::reuse_address(bool enable) {
   reuse_address_ = enable;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::independent_context(bool use_independent) {
+UdpServerBuilder& UdpServerBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::idle_timeout(std::chrono::milliseconds timeout) {
+UdpServerBuilder& UdpServerBuilder::idle_timeout(std::chrono::milliseconds timeout) {
   idle_timeout_ = timeout;
   idle_timeout_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::send_buffer_size(size_t bytes) {
+UdpServerBuilder& UdpServerBuilder::send_buffer_size(size_t bytes) {
   send_buffer_size_ = bytes;
   return *this;
 }
 
-template <uint32_t State>
-UdpServerBuilder<State>& UdpServerBuilder<State>::receive_buffer_size(size_t bytes) {
+UdpServerBuilder& UdpServerBuilder::receive_buffer_size(size_t bytes) {
   receive_buffer_size_ = bytes;
   return *this;
 }
 
 // Explicit template instantiations
-template class UdpClientBuilder<BuilderState::None>;
-template class UdpClientBuilder<BuilderState::HasData>;
-template class UdpClientBuilder<BuilderState::HasError>;
-template class UdpClientBuilder<BuilderState::Ready>;
-template class UdpServerBuilder<BuilderState::None>;
-template class UdpServerBuilder<BuilderState::HasData>;
-template class UdpServerBuilder<BuilderState::HasError>;
-template class UdpServerBuilder<BuilderState::Ready>;
 
 }  // namespace builder
 }  // namespace wirestead

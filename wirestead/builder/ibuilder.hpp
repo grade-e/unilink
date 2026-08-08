@@ -51,17 +51,9 @@ template <typename T>
 concept ConnectionHandler = std::invocable<T, const wrapper::ConnectionContext&>;
 
 /**
- * @brief Builder state bitmask for callback registration tracking.
- *
- * Callback registration is optional. The state is retained for fluent CRTP
- * rebinding and future extension points, not for mandatory build gating.
- */
-enum BuilderState : uint32_t { None = 0, HasData = 1 << 0, HasError = 1 << 1, Ready = HasData | HasError };
-
-/**
  * @brief Generic Builder interface for fluent API pattern
  */
-template <typename T, typename Derived, uint32_t State = BuilderState::None>
+template <typename T, typename Derived>
 class BuilderInterface {
  public:
   virtual ~BuilderInterface() = default;
@@ -84,32 +76,26 @@ class BuilderInterface {
   /**
    * @brief Set data handler callback
    */
-  // Note: this returns a new, moved-to builder value rather than mutating in
-  // place (see BuilderState's doc comment above) - the original object is
-  // left moved-from. [[nodiscard]] turns an accidental
-  // `builder.on_data(...);` statement that ignores the result (which would
-  // silently leave `builder` moved-from) into a compile-time warning instead
-  // of a runtime footgun.
   template <DataHandler F>
-  [[nodiscard]] auto on_data(F&& handler) {
+  Derived& on_data(F&& handler) {
     on_data_ = std::forward<F>(handler);
-    return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
+    return static_cast<Derived&>(*this);
   }
 
   /**
    * @brief Set batched data handler callback
    */
   template <BatchDataHandler F>
-  [[nodiscard]] auto on_data_batch(F&& handler) {
+  Derived& on_data_batch(F&& handler) {
     on_data_batch_ = std::forward<F>(handler);
-    return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
+    return static_cast<Derived&>(*this);
   }
 
   /**
    * @brief Set data handler callback using member function pointer
    */
   template <typename U, typename F>
-  [[nodiscard]] auto on_data(U* obj, F method) {
+  Derived& on_data(U* obj, F method) {
     return on_data([obj, method](const wrapper::MessageContext& ctx) { (obj->*method)(ctx); });
   }
 
@@ -151,16 +137,16 @@ class BuilderInterface {
    * @brief Set error handler callback
    */
   template <ErrorHandler F>
-  [[nodiscard]] auto on_error(F&& handler) {
+  Derived& on_error(F&& handler) {
     on_error_ = std::forward<F>(handler);
-    return typename Derived::template Rebind<State | BuilderState::HasError>(std::move(static_cast<Derived&>(*this)));
+    return static_cast<Derived&>(*this);
   }
 
   /**
    * @brief Set error handler callback using member function pointer
    */
   template <typename U, typename F>
-  [[nodiscard]] auto on_error(U* obj, F method) {
+  Derived& on_error(U* obj, F method) {
     return on_error([obj, method](const wrapper::ErrorContext& ctx) { (obj->*method)(ctx); });
   }
 
@@ -201,18 +187,18 @@ class BuilderInterface {
    * @brief Set message handler callback
    */
   template <DataHandler F>
-  [[nodiscard]] auto on_message(F&& handler) {
+  Derived& on_message(F&& handler) {
     on_message_ = std::forward<F>(handler);
-    return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
+    return static_cast<Derived&>(*this);
   }
 
   /**
    * @brief Set batched framed-message handler callback
    */
   template <BatchDataHandler F>
-  [[nodiscard]] auto on_message_batch(F&& handler) {
+  Derived& on_message_batch(F&& handler) {
     on_message_batch_ = std::forward<F>(handler);
-    return typename Derived::template Rebind<State | BuilderState::HasData>(std::move(static_cast<Derived&>(*this)));
+    return static_cast<Derived&>(*this);
   }
 
   /**
@@ -227,7 +213,7 @@ class BuilderInterface {
    * @brief Set message handler callback using member function pointer
    */
   template <typename U, typename F>
-  [[nodiscard]] auto on_message(U* obj, F method) {
+  Derived& on_message(U* obj, F method) {
     return on_message([obj, method](const wrapper::MessageContext& ctx) { (obj->*method)(ctx); });
   }
 

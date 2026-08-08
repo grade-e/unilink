@@ -27,8 +27,7 @@ namespace builder {
 
 // UdsClientBuilder implementation
 
-template <uint32_t State>
-UdsClientBuilder<State>::UdsClientBuilder(const std::string& socket_path)
+UdsClientBuilder::UdsClientBuilder(const std::string& socket_path)
     : socket_path_(socket_path),
       auto_start_(false),
       independent_context_(false),
@@ -42,8 +41,7 @@ UdsClientBuilder<State>::UdsClientBuilder(const std::string& socket_path)
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::UdsClient> UdsClientBuilder<State>::build() {
+std::unique_ptr<wrapper::UdsClient> UdsClientBuilder::build() {
   std::unique_ptr<wrapper::UdsClient> client;
   if (independent_context_) {
     client = std::make_unique<wrapper::UdsClient>(socket_path_, std::make_shared<boost::asio::io_context>());
@@ -84,50 +82,43 @@ std::unique_ptr<wrapper::UdsClient> UdsClientBuilder<State>::build() {
   return client;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::auto_start(bool auto_start) {
+UdsClientBuilder& UdsClientBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::retry_interval(std::chrono::milliseconds interval) {
+UdsClientBuilder& UdsClientBuilder::retry_interval(std::chrono::milliseconds interval) {
   retry_interval_ = interval;
   retry_interval_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::max_retries(int max_retries) {
+UdsClientBuilder& UdsClientBuilder::max_retries(int max_retries) {
   max_retries_ = max_retries;
   max_retries_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::connection_timeout(std::chrono::milliseconds timeout) {
+UdsClientBuilder& UdsClientBuilder::connection_timeout(std::chrono::milliseconds timeout) {
   connection_timeout_ = timeout;
   connection_timeout_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::read_buffer_size(size_t bytes) {
+UdsClientBuilder& UdsClientBuilder::read_buffer_size(size_t bytes) {
   read_buffer_size_ = bytes;
   read_buffer_size_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsClientBuilder<State>& UdsClientBuilder<State>::independent_context(bool use_independent) {
+UdsClientBuilder& UdsClientBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
 // UdsServerBuilder implementation
 
-template <uint32_t State>
-UdsServerBuilder<State>::UdsServerBuilder(const std::string& socket_path)
+UdsServerBuilder::UdsServerBuilder(const std::string& socket_path)
     : socket_path_(socket_path),
       auto_start_(false),
       independent_context_(false),
@@ -142,8 +133,7 @@ UdsServerBuilder<State>::UdsServerBuilder(const std::string& socket_path)
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::UdsServer> UdsServerBuilder<State>::build() {
+std::unique_ptr<wrapper::UdsServer> UdsServerBuilder::build() {
   std::unique_ptr<wrapper::UdsServer> server;
   if (independent_context_) {
     server = std::make_unique<wrapper::UdsServer>(socket_path_, std::make_shared<boost::asio::io_context>());
@@ -188,48 +178,41 @@ std::unique_ptr<wrapper::UdsServer> UdsServerBuilder<State>::build() {
   return server;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::auto_start(bool auto_start) {
+UdsServerBuilder& UdsServerBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::independent_context(bool use_independent) {
+UdsServerBuilder& UdsServerBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::idle_timeout(std::chrono::milliseconds timeout) {
+UdsServerBuilder& UdsServerBuilder::idle_timeout(std::chrono::milliseconds timeout) {
   idle_timeout_ = timeout;
   idle_timeout_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::read_buffer_size(size_t bytes) {
+UdsServerBuilder& UdsServerBuilder::read_buffer_size(size_t bytes) {
   read_buffer_size_ = bytes;
   read_buffer_size_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::max_clients(uint32_t max_clients) {
+UdsServerBuilder& UdsServerBuilder::max_clients(uint32_t max_clients) {
   max_clients_ = max_clients;
   client_limit_enabled_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::single_client() {
+UdsServerBuilder& UdsServerBuilder::single_client() {
   max_clients_ = 1;
   client_limit_enabled_ = true;
   return *this;
 }
 
-template <uint32_t State>
-UdsServerBuilder<State>& UdsServerBuilder<State>::multi_client(size_t max) {
+UdsServerBuilder& UdsServerBuilder::multi_client(size_t max) {
   if (max == 0) {
     throw diagnostics::BuilderException("multi_client max must be greater than 0");
   }
@@ -239,14 +222,6 @@ UdsServerBuilder<State>& UdsServerBuilder<State>::multi_client(size_t max) {
 }
 
 // Explicit template instantiations
-template class UdsClientBuilder<BuilderState::None>;
-template class UdsClientBuilder<BuilderState::HasData>;
-template class UdsClientBuilder<BuilderState::HasError>;
-template class UdsClientBuilder<BuilderState::Ready>;
-template class UdsServerBuilder<BuilderState::None>;
-template class UdsServerBuilder<BuilderState::HasData>;
-template class UdsServerBuilder<BuilderState::HasError>;
-template class UdsServerBuilder<BuilderState::Ready>;
 
 }  // namespace builder
 }  // namespace wirestead

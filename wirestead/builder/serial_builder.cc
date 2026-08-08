@@ -27,8 +27,7 @@
 namespace wirestead {
 namespace builder {
 
-template <uint32_t State>
-SerialBuilder<State>::SerialBuilder(const std::string& device, uint32_t baud_rate)
+SerialBuilder::SerialBuilder(const std::string& device, uint32_t baud_rate)
     : device_(device),
       baud_rate_(baud_rate),
       auto_start_(false),
@@ -46,8 +45,7 @@ SerialBuilder<State>::SerialBuilder(const std::string& device, uint32_t baud_rat
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::Serial> SerialBuilder<State>::build() {
+std::unique_ptr<wrapper::Serial> SerialBuilder::build() {
   std::unique_ptr<wrapper::Serial> serial;
   if (independent_context_) {
     serial = std::make_unique<wrapper::Serial>(device_, baud_rate_, std::make_shared<boost::asio::io_context>());
@@ -110,35 +108,30 @@ std::unique_ptr<wrapper::Serial> SerialBuilder<State>::build() {
   return serial;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::auto_start(bool auto_start) {
+SerialBuilder& SerialBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::char_size(unsigned int size) {
+SerialBuilder& SerialBuilder::char_size(unsigned int size) {
   char_size_ = size;
   char_size_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::stop_bits(unsigned int bits) {
+SerialBuilder& SerialBuilder::stop_bits(unsigned int bits) {
   stop_bits_ = bits;
   stop_bits_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::parity(config::SerialConfig::Parity p) {
+SerialBuilder& SerialBuilder::parity(config::SerialConfig::Parity p) {
   parity_ = p;
   parity_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::parity(const std::string& p) {
+SerialBuilder& SerialBuilder::parity(const std::string& p) {
   std::string value = p;
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -154,15 +147,13 @@ SerialBuilder<State>& SerialBuilder<State>::parity(const std::string& p) {
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::flow_control(config::SerialConfig::Flow f) {
+SerialBuilder& SerialBuilder::flow_control(config::SerialConfig::Flow f) {
   flow_ = f;
   flow_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::flow_control(const std::string& f) {
+SerialBuilder& SerialBuilder::flow_control(const std::string& f) {
   std::string value = f;
   std::transform(value.begin(), value.end(), value.begin(),
                  [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -178,44 +169,35 @@ SerialBuilder<State>& SerialBuilder<State>::flow_control(const std::string& f) {
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::read_chunk(size_t bytes) {
+SerialBuilder& SerialBuilder::read_chunk(size_t bytes) {
   read_chunk_ = bytes;
   read_chunk_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::reopen_on_error(bool enable) {
+SerialBuilder& SerialBuilder::reopen_on_error(bool enable) {
   reopen_on_error_ = enable;
   reopen_on_error_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::retry_interval(std::chrono::milliseconds interval) {
+SerialBuilder& SerialBuilder::retry_interval(std::chrono::milliseconds interval) {
   retry_interval_ms_ = static_cast<uint32_t>(interval.count());
   retry_interval_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::independent_context(bool use_independent) {
+SerialBuilder& SerialBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
-template <uint32_t State>
-SerialBuilder<State>& SerialBuilder<State>::shared_context(bool use_shared) {
+SerialBuilder& SerialBuilder::shared_context(bool use_shared) {
   shared_context_ = use_shared;
   return *this;
 }
 
 // Explicit template instantiations
-template class SerialBuilder<BuilderState::None>;
-template class SerialBuilder<BuilderState::HasData>;
-template class SerialBuilder<BuilderState::HasError>;
-template class SerialBuilder<BuilderState::Ready>;
 
 }  // namespace builder
 }  // namespace wirestead

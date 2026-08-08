@@ -38,42 +38,9 @@ namespace builder {
 /**
  * @brief Modernized Builder for UdsClient
  */
-template <uint32_t State = BuilderState::None>
-class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClient, UdsClientBuilder<State>, State> {
+class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClient, UdsClientBuilder> {
  public:
-  template <uint32_t NewState>
-  using Rebind = UdsClientBuilder<NewState>;
-
   explicit UdsClientBuilder(const std::string& socket_path);
-
-  // Allow conversion between states
-  template <uint32_t OtherState>
-  UdsClientBuilder(UdsClientBuilder<OtherState>&& other) noexcept
-      : socket_path_(std::move(other.socket_path_)),
-        auto_start_(other.auto_start_),
-        independent_context_(other.independent_context_),
-        retry_interval_(other.retry_interval_),
-        retry_interval_set_(other.retry_interval_set_),
-        max_retries_(other.max_retries_),
-        max_retries_set_(other.max_retries_set_),
-        connection_timeout_(other.connection_timeout_),
-        connection_timeout_set_(other.connection_timeout_set_),
-        read_buffer_size_(other.read_buffer_size_),
-        read_buffer_size_set_(other.read_buffer_size_set_) {
-    this->on_data_ = std::move(other.on_data_);
-    this->on_error_ = std::move(other.on_error_);
-    this->on_connect_ = std::move(other.on_connect_);
-    this->on_disconnect_ = std::move(other.on_disconnect_);
-    this->on_message_ = std::move(other.on_message_);
-    this->on_data_batch_ = std::move(other.on_data_batch_);
-    this->on_message_batch_ = std::move(other.on_message_batch_);
-    this->on_backpressure_ = std::move(other.on_backpressure_);
-    this->framer_factory_ = std::move(other.framer_factory_);
-    this->bp_strategy_ = other.bp_strategy_;
-    this->bp_threshold_ = other.bp_threshold_;
-    this->bp_strategy_set_ = other.bp_strategy_set_;
-    this->bp_threshold_set_ = other.bp_threshold_set_;
-  }
 
   // Delete copy
   UdsClientBuilder(const UdsClientBuilder&) = delete;
@@ -81,10 +48,10 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
 
   std::unique_ptr<wrapper::UdsClient> build() override;
 
-  UdsClientBuilder<State>& auto_start(bool auto_start = true) override;
-  UdsClientBuilder<State>& retry_interval(std::chrono::milliseconds interval);
-  UdsClientBuilder<State>& max_retries(int max_retries);
-  UdsClientBuilder<State>& connection_timeout(std::chrono::milliseconds timeout);
+  UdsClientBuilder& auto_start(bool auto_start = true) override;
+  UdsClientBuilder& retry_interval(std::chrono::milliseconds interval);
+  UdsClientBuilder& max_retries(int max_retries);
+  UdsClientBuilder& connection_timeout(std::chrono::milliseconds timeout);
 
   /**
    * @brief Size of the userspace buffer each read fills, in bytes.
@@ -93,13 +60,10 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
    * transfers, at the cost of that much memory per connection. Clamped to
    * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
    */
-  UdsClientBuilder<State>& read_buffer_size(size_t bytes);
-  UdsClientBuilder<State>& independent_context(bool use_independent = true);
+  UdsClientBuilder& read_buffer_size(size_t bytes);
+  UdsClientBuilder& independent_context(bool use_independent = true);
 
  private:
-  template <uint32_t S>
-  friend class UdsClientBuilder;
-
   std::string socket_path_;
   bool auto_start_;
   bool independent_context_;
@@ -114,45 +78,14 @@ class WIRESTEAD_API UdsClientBuilder : public BuilderInterface<wrapper::UdsClien
   bool read_buffer_size_set_{false};
 };
 
-using UdsClientBuilderDefault = UdsClientBuilder<BuilderState::None>;
+using UdsClientBuilderDefault = UdsClientBuilder;
 
 /**
  * @brief Modernized Builder for UdsServer
  */
-template <uint32_t State = BuilderState::None>
-class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServer, UdsServerBuilder<State>, State> {
+class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServer, UdsServerBuilder> {
  public:
-  template <uint32_t NewState>
-  using Rebind = UdsServerBuilder<NewState>;
-
   explicit UdsServerBuilder(const std::string& socket_path);
-
-  // Allow conversion between states
-  template <uint32_t OtherState>
-  UdsServerBuilder(UdsServerBuilder<OtherState>&& other) noexcept
-      : socket_path_(std::move(other.socket_path_)),
-        auto_start_(other.auto_start_),
-        independent_context_(other.independent_context_),
-        max_clients_(other.max_clients_),
-        client_limit_enabled_(other.client_limit_enabled_),
-        idle_timeout_(other.idle_timeout_),
-        idle_timeout_set_(other.idle_timeout_set_),
-        read_buffer_size_(other.read_buffer_size_),
-        read_buffer_size_set_(other.read_buffer_size_set_) {
-    this->on_data_ = std::move(other.on_data_);
-    this->on_error_ = std::move(other.on_error_);
-    this->on_connect_ = std::move(other.on_connect_);
-    this->on_disconnect_ = std::move(other.on_disconnect_);
-    this->on_message_ = std::move(other.on_message_);
-    this->on_data_batch_ = std::move(other.on_data_batch_);
-    this->on_message_batch_ = std::move(other.on_message_batch_);
-    this->on_backpressure_ = std::move(other.on_backpressure_);
-    this->framer_factory_ = std::move(other.framer_factory_);
-    this->bp_strategy_ = other.bp_strategy_;
-    this->bp_threshold_ = other.bp_threshold_;
-    this->bp_strategy_set_ = other.bp_strategy_set_;
-    this->bp_threshold_set_ = other.bp_threshold_set_;
-  }
 
   // Delete copy
   UdsServerBuilder(const UdsServerBuilder&) = delete;
@@ -160,9 +93,9 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
 
   std::unique_ptr<wrapper::UdsServer> build() override;
 
-  UdsServerBuilder<State>& auto_start(bool auto_start = true) override;
-  UdsServerBuilder<State>& independent_context(bool use_independent = true);
-  UdsServerBuilder<State>& idle_timeout(std::chrono::milliseconds timeout);
+  UdsServerBuilder& auto_start(bool auto_start = true) override;
+  UdsServerBuilder& independent_context(bool use_independent = true);
+  UdsServerBuilder& idle_timeout(std::chrono::milliseconds timeout);
 
   /**
    * @brief Size of the userspace buffer each read fills, in bytes.
@@ -171,17 +104,14 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
    * transfers, at the cost of that much memory per connection. Clamped to
    * [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
    */
-  UdsServerBuilder<State>& read_buffer_size(size_t bytes);
-  UdsServerBuilder<State>& max_clients(uint32_t max_clients);
+  UdsServerBuilder& read_buffer_size(size_t bytes);
+  UdsServerBuilder& max_clients(uint32_t max_clients);
   [[deprecated("Use max_clients(1) instead")]]
-  UdsServerBuilder<State>& single_client();
+  UdsServerBuilder& single_client();
   [[deprecated("Use max_clients(max) instead")]]
-  UdsServerBuilder<State>& multi_client(size_t max);
+  UdsServerBuilder& multi_client(size_t max);
 
  private:
-  template <uint32_t S>
-  friend class UdsServerBuilder;
-
   std::string socket_path_;
   bool auto_start_;
   bool independent_context_;
@@ -194,7 +124,7 @@ class WIRESTEAD_API UdsServerBuilder : public BuilderInterface<wrapper::UdsServe
   bool read_buffer_size_set_{false};
 };
 
-using UdsServerBuilderDefault = UdsServerBuilder<BuilderState::None>;
+using UdsServerBuilderDefault = UdsServerBuilder;
 
 #ifdef _MSC_VER
 #pragma warning(pop)

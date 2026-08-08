@@ -8,6 +8,54 @@ and ABI policy.
 
 ## Unreleased
 
+### Breaking
+
+- Builder setters all return `Derived&` and mutate in place. `on_data`,
+  `on_data_batch`, `on_message`, `on_message_batch` and `on_error` used to
+  return a *new* builder of a different type and leave the original
+  moved-from, while `on_connect`, `framer`, `auto_start` and the rest returned
+  a reference — the same builder, two conventions. The `BuilderState` template
+  parameter, the `Rebind` alias and the CRTP machinery behind them are gone.
+
+  **This bought nothing.** Nothing ever read `BuilderState`; `ibuilder.hpp`
+  said so itself, documenting it as "not for mandatory build gating". It only
+  created a trap — take the result of `on_data` and keep using the original and
+  you are working with a moved-from object, which `[[nodiscard]]` cannot catch
+  — and forced 28 explicit template instantiations of otherwise identical code.
+
+  Chained code is unaffected, which is how the quickstart and every example are
+  written:
+
+  ```cpp
+  auto client = wirestead::tcp_client("127.0.0.1", 8080)
+                    .on_data(...)
+                    .on_error(...)
+                    .build();          // unchanged
+  ```
+
+  Two forms need updating. Spelling the type with its state:
+
+  ```cpp
+  builder::TcpClientBuilder<> b{...};                    // before
+  builder::TcpClientBuilder b{...};                      // after
+  ```
+
+  And capturing the result of a handler setter, which used to hand back a new
+  object:
+
+  ```cpp
+  auto b = builder::UdpClientBuilder(0).on_data_batch(h); // before
+  auto udp = std::move(b).auto_start(false).build();
+
+  auto b = builder::UdpClientBuilder(0);                  // after
+  b.on_data_batch(h);
+  auto udp = b.auto_start(false).build();
+  ```
+
+  `TcpClientBuilderDefault` and the other `*Default` aliases still name the
+  builder, so code using those keeps compiling.
+
+
 ### Added
 
 - `read_buffer_size` on the TCP and UDS configs, wrappers, and builders. This
