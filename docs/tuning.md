@@ -61,13 +61,30 @@ load, with the mechanism confirmed live in the same runs. Hundreds of
 nanoseconds do not show inside a p99 of hundreds of microseconds. Those changes
 are worth having for CPU and allocator pressure; they are not latency work.
 
-**Connection count costs threads, and threads cost more on small machines.**
-Each TCP/UDP/UDS client owns an `io_context` and a thread, so connections and
-threads scale together — measured at 3.0 threads and roughly 0.4–0.6 MiB per
-connection. On a 20-core x86_64 host, p99 is flat from 8 to 1024 connections.
-On a 6-core Jetson Orin Nano the same sweep rises about 2.6x from 8 to 512.
-If you are fanning out many connections from one embedded process, that is the
-cost to plan around; no buffer setting changes it.
+**Client objects cost threads. Server sessions do not.** The two are easy to
+conflate and behave nothing alike:
+
+| shape | threads |
+|---|---|
+| one server, N accepted sessions | **constant** — measured 3 at N=0 and 3 at N=64 |
+| N client objects in one process | **~2 each** — measured 131 threads at N=64 |
+
+A server multiplexes every session onto one `io_context`, so accepting more
+connections costs memory and nothing else. Each `TcpClient`, `UdpChannel` or
+`UdsClient` instead owns an `io_context` and a thread, so a process holding
+many client objects holds many threads.
+
+That only bites a process that fans out — a gateway dialling many peers, or a
+load generator. Most embedded deployments hold a handful of client objects and
+never notice. If you are the fan-out case: on a 20-core x86_64 host p99 stayed
+flat from 8 to 1024 client objects, while on a 6-core Jetson Orin Nano the same
+sweep rose about 2.6x from 8 to 512. Roughly 0.4–0.6 MiB per connection either
+way. No buffer setting changes it.
+
+`use_shared_context` puts a channel on the shared `IoContextManager` singleton
+instead of its own, but today it is only wired up for `TcpServer` and `Serial`,
+which are the two that did not need it. Extending it to the client transports
+is additive and non-breaking whenever a real fan-out use case turns up.
 
 `benchmarks/tcp/tcp_load_latency.cpp` in
 [wirestead-benchmarks](https://github.com/wirestead/wirestead-benchmarks) is
