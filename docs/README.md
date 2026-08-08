@@ -8,5 +8,6 @@ package consumers, migration users, and release maintainers.
 - [Quick Start](quickstart.md)
 - [Installation](installation.md)
 - [API Stability Summary](api_stability.md)
+- [Tuning](tuning.md)
 - [Migrating from Unilink](migration-from-unilink.md)
 - [Release Checklist](release_checklist.md)
