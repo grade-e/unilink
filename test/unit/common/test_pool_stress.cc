@@ -40,7 +40,10 @@ class MemoryPoolStressTest : public ::testing::Test {
 TEST_F(MemoryPoolStressTest, ExhaustionAndRecovery) {
   // Create a pool with small capacity
   // 4 buckets, if max_pool_size is 20, capacity per bucket is 5.
-  MemoryPool pool(5, 20);
+  // Prefill is 0 on purpose: this test counts hits against an empty start, so
+  // a prefilled bucket would satisfy the first acquires and shift every number
+  // below. MemoryPoolPrefillTest covers the prefill path itself.
+  MemoryPool pool(0, 20);
 
   std::vector<std::unique_ptr<uint8_t[]>> allocations;
   size_t alloc_size = 1024;  // Should fall into SMALL bucket (size 1024)
@@ -54,11 +57,8 @@ TEST_F(MemoryPoolStressTest, ExhaustionAndRecovery) {
 
   auto stats = pool.stats();
   EXPECT_EQ(stats.total_allocations, 6);
-  // Hits might be 0 because pool starts empty and fills on release?
-  // No, pool starts with empty vector (reserve only).
-  // So all 6 are new allocations (misses in terms of "getting from pool", but counted as total_allocations).
-  // Implementation: acquire -> if !empty pop (hit) else create (total++).
-  // So all 6 are created. pool_hits should be 0.
+  // Nothing to hit yet: the pool was constructed unprefilled and buckets only
+  // fill on release. total_allocations counts every acquire, hits included.
   EXPECT_EQ(stats.pool_hits, 0);
 
   // Release all
@@ -77,19 +77,14 @@ TEST_F(MemoryPoolStressTest, ExhaustionAndRecovery) {
   }
 
   stats = pool.stats();
-  // Total allocations: 6 (initial) + 6 (second round) = 12?
-  // Wait, acquire_from_bucket:
-  // if from stack: hits++, total++
-  // if create: total++
-  // So total should be 12.
-  // First 5 should be hits.
-  // 6th should be create (miss).
+  // 12 acquires in total. Of the second six, the five the bucket could hold are
+  // hits and the sixth has to be created.
   EXPECT_EQ(stats.total_allocations, 12);
   EXPECT_EQ(stats.pool_hits, 5);
 }
 
 TEST_F(MemoryPoolStressTest, ReuseAddress) {
-  MemoryPool pool(5, 20);
+  MemoryPool pool(0, 20);  // unprefilled: this test tracks a specific buffer's address
   size_t size = 1024;
 
   auto ptr1 = pool.acquire(size);

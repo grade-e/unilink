@@ -55,7 +55,8 @@ struct SerialConfig {
 
   // Validation methods
   bool is_valid() const {
-    return util::InputValidator::is_valid_device_path(device) && baud_rate >= base::constants::MIN_BAUD_RATE &&
+    return read_chunk >= base::constants::MIN_READ_BUFFER_SIZE && read_chunk <= base::constants::MAX_READ_BUFFER_SIZE &&
+           util::InputValidator::is_valid_device_path(device) && baud_rate >= base::constants::MIN_BAUD_RATE &&
            baud_rate <= base::constants::MAX_BAUD_RATE && char_size >= 5 && char_size <= 8 &&
            (stop_bits == 1 || stop_bits == 2) && retry_interval_ms >= base::constants::MIN_RETRY_INTERVAL_MS &&
            retry_interval_ms <= base::constants::MAX_RETRY_INTERVAL_MS &&
@@ -66,6 +67,15 @@ struct SerialConfig {
 
   // Apply validation and clamp values to valid ranges
   void validate_and_clamp() {
+    // Same bounds the TCP and UDS configs apply to read_buffer_size: this is
+    // the per-connection userspace read buffer under a different name, and an
+    // unclamped 0 reaches the transport as rx_.resize(0).
+    if (read_chunk < base::constants::MIN_READ_BUFFER_SIZE) {
+      read_chunk = base::constants::MIN_READ_BUFFER_SIZE;
+    } else if (read_chunk > base::constants::MAX_READ_BUFFER_SIZE) {
+      read_chunk = base::constants::MAX_READ_BUFFER_SIZE;
+    }
+
     if (baud_rate < base::constants::MIN_BAUD_RATE) {
       baud_rate = base::constants::MIN_BAUD_RATE;
     } else if (baud_rate > base::constants::MAX_BAUD_RATE) {

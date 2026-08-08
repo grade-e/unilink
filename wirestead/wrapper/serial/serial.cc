@@ -93,6 +93,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
   std::string parity = "none";
   std::string flow_control = "none";
   bool reopen_on_error = true;
+  size_t read_chunk = base::constants::DEFAULT_READ_BUFFER_SIZE;
   std::chrono::milliseconds retry_interval{base::constants::DEFAULT_RETRY_INTERVAL_MS};
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
@@ -597,6 +598,7 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
 
     config.retry_interval_ms = static_cast<unsigned int>(retry_interval.count());
     config.reopen_on_error = reopen_on_error;
+    config.read_chunk = read_chunk;
     config.backpressure_threshold = backpressure_threshold;
     config.backpressure_strategy = backpressure_strategy;
     config.use_shared_context = shared_context_.load();
@@ -719,6 +721,12 @@ Serial& Serial::flow_control(const std::string& f) {
   impl_->flow_control = f;
   return *this;
 }
+Serial& Serial::read_chunk(size_t bytes) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->read_chunk = bytes;
+  return *this;
+}
+
 Serial& Serial::reopen_on_error(bool enable) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->reopen_on_error = enable;

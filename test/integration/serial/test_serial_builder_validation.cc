@@ -65,3 +65,22 @@ TEST_F(SerialBuilderValidationTest, InvalidParityFallsBackDuringBuild) {
     ASSERT_NE(serial_ptr, nullptr);
   });
 }
+
+// read_chunk reached the config layer but had no builder or wrapper surface,
+// so serial was the one transport whose read buffer could not be set the way
+// TCP and UDS set read_buffer_size(). These pin the surface down; the value
+// itself is exercised at the config layer, which is where the clamp lives.
+TEST_F(SerialBuilderValidationTest, AcceptsReadChunkOption) {
+  auto serial_ptr = serial(device_, 115200).read_chunk(16384).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  ASSERT_NE(serial_ptr, nullptr);
+}
+
+TEST_F(SerialBuilderValidationTest, OutOfRangeReadChunkIsClampedNotRejected) {
+  EXPECT_NO_THROW({
+    auto too_small = serial(device_, 9600).read_chunk(1).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+    ASSERT_NE(too_small, nullptr);
+    auto too_large =
+        serial(device_, 9600).read_chunk(64 * 1024 * 1024).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+    ASSERT_NE(too_large, nullptr);
+  });
+}

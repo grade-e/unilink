@@ -87,6 +87,7 @@ std::unique_ptr<wrapper::Serial> SerialBuilder<State>::build() {
   }
 
   if (reopen_on_error_set_) serial->reopen_on_error(reopen_on_error_);
+  if (read_chunk_set_) serial->read_chunk(read_chunk_);
   if (retry_interval_set_) serial->retry_interval(std::chrono::milliseconds(retry_interval_ms_));
 
   if (this->bp_strategy_set_) serial->backpressure_strategy(this->bp_strategy_);
@@ -174,6 +175,13 @@ SerialBuilder<State>& SerialBuilder<State>::flow_control(const std::string& f) {
     flow_ = config::SerialConfig::Flow::None;
   }
   flow_set_ = true;
+  return *this;
+}
+
+template <uint32_t State>
+SerialBuilder<State>& SerialBuilder<State>::read_chunk(size_t bytes) {
+  read_chunk_ = bytes;
+  read_chunk_set_ = true;
   return *this;
 }
 
