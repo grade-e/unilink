@@ -14,6 +14,12 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
+# Both triggers write the same branch, so a manual run overlapping the schedule
+# would have two jobs force-pushing over each other.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
   pull-requests: write
@@ -72,14 +78,36 @@ jobs:
           # A PR opened with GITHUB_TOKEN does not trigger workflow runs, so
           # prefer a PAT when one is configured. Without it the PR still opens,
           # but CI has to be kicked by hand before the bump means anything.
-          GH_TOKEN: ${{ secrets.VCPKG_BUMP_TOKEN || secrets.GITHUB_TOKEN }}
+          BUMP_TOKEN: ${{ secrets.VCPKG_BUMP_TOKEN }}
+          FALLBACK_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURRENT: ${{ steps.candidate.outputs.current }}
           CANDIDATE: ${{ steps.candidate.outputs.candidate }}
-          HAS_PAT: ${{ secrets.VCPKG_BUMP_TOKEN != '' }}
         run: |
           set -euo pipefail
           branch="automation/vcpkg-baseline"
           short="${CANDIDATE:0:12}"
+          title="ci: bump the vcpkg baseline to ${short}"
+
+          # `secrets.X != ''` only distinguishes unset from set. An expired PAT
+          # is still a non-empty string, so that test would send us down the PAT
+          # path to a 401 instead of the fallback that exists for exactly this.
+          # Ask GitHub whether the token actually works. The PAT has a one-year
+          # lifetime, so the day this matters is far enough out that nobody will
+          # remember the failure mode.
+          HAS_PAT=false
+          if [ -n "${BUMP_TOKEN}" ]; then
+            if GH_TOKEN="${BUMP_TOKEN}" gh api user --jq '.login' > /dev/null 2>&1; then
+              HAS_PAT=true
+            else
+              echo "::warning::VCPKG_BUMP_TOKEN is set but GitHub rejected it - it has most likely expired. Falling back to GITHUB_TOKEN; CI will not start on the PR by itself."
+            fi
+          fi
+
+          if [ "${HAS_PAT}" = "true" ]; then
+            export GH_TOKEN="${BUMP_TOKEN}"
+          else
+            export GH_TOKEN="${FALLBACK_TOKEN}"
+          fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -103,13 +131,17 @@ jobs:
 
           existing="$(gh pr list --head "${branch}" --state open --json number --jq '.[0].number // empty')"
           if [ -n "${existing}" ]; then
-            gh pr edit "${existing}" --body-file vcpkg-bump-body.md
+            # The title has to move with the branch. This runs weekly against a
+            # long-lived branch, and GitHub composes a squash-merge subject from
+            # the PR title, so leaving it behind writes a baseline sha into main
+            # that was never the one merged. That happened on #558.
+            gh pr edit "${existing}" --title "${title}" --body-file vcpkg-bump-body.md
             echo "updated existing PR #${existing}"
           else
             gh pr create \
               --base main \
               --head "${branch}" \
-              --title "ci: bump the vcpkg baseline to ${short}" \
+              --title "${title}" \
               --body-file vcpkg-bump-body.md
           fi
 
