@@ -117,6 +117,13 @@ TEST(ReceiveAllocationsTest, DoesNotAllocatePerDeliveredMessage) {
   });
   ASSERT_TRUE(client->start_sync());
 
+  // start_sync() only promises the client's side of the handshake. The server
+  // registers the session on its own io thread, and broadcast() with no
+  // sessions accepts nothing - which fails this test for a reason that has
+  // nothing to do with allocations.
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->client_count() > 0; }, 5000))
+      << "server never registered the connection";
+
   const std::string payload(kPayload, 'a');
   // broadcast() is a non-blocking fan-out, so a tight loop legitimately drops
   // once the queue fills. Count what it accepted rather than what was offered -
