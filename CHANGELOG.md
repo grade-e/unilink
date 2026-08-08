@@ -19,9 +19,25 @@ and ABI policy.
   `[MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]` (512 B to 1 MiB). The ceiling
   is far below `MAX_SOCKET_BUFFER_SIZE` because this buffer is per connection
   and a server multiplies it by `max_connections`.
+- `read_chunk` on the serial wrapper and builder. Serial already had the knob
+  on its config and the transport already honoured it, but with no wrapper or
+  builder surface it was reachable only by constructing a `SerialConfig` by
+  hand — serial was the one transport whose read buffer could not be set the
+  way TCP and UDS set `read_buffer_size`. It is the same setting under the
+  older name, and is now clamped to the same
+  `[MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE]` bounds, which also closes a
+  hole where `read_chunk = 0` reached the transport as `rx_.resize(0)`.
 
 ### Changed
 
+- `MemoryPool`'s `initial_pool_size` now prefills the buckets instead of being
+  discarded, and its default moves from 400 to 0. **If you pass this argument
+  explicitly, the pool now really does pre-allocate**; previously the value was
+  ignored and every pool started empty. The default changes to 0 so that
+  behaviour is preserved for callers who never set it: the buckets run 1 KiB to
+  64 KiB, so honouring the old nominal 400 would have reserved roughly 8.3 MiB
+  before the first `acquire()` — a cost the old signature implied and never
+  charged, and one that matters on the embedded targets this library targets.
 - Stream transports now drain several queued buffers into one scatter-gather
   write instead of one send syscall per queued message. Measured on a TCP
   loopback burst of 16386 small messages, send syscalls drop from 16386 to
