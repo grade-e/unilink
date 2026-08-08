@@ -24,8 +24,7 @@
 namespace wirestead {
 namespace builder {
 
-template <uint32_t State>
-TcpServerBuilder<State>::TcpServerBuilder(uint16_t port)
+TcpServerBuilder::TcpServerBuilder(uint16_t port)
     : port_(port),
       bind_address_("0.0.0.0"),
       auto_start_(false),
@@ -49,8 +48,7 @@ TcpServerBuilder<State>::TcpServerBuilder(uint16_t port)
   AutoInitializer::ensure_io_context_running();
 }
 
-template <uint32_t State>
-std::unique_ptr<wrapper::TcpServer> TcpServerBuilder<State>::build() {
+std::unique_ptr<wrapper::TcpServer> TcpServerBuilder::build() {
   std::unique_ptr<wrapper::TcpServer> server;
   if (independent_context_) {
     server = std::make_unique<wrapper::TcpServer>(port_, std::make_shared<boost::asio::io_context>());
@@ -103,97 +101,83 @@ std::unique_ptr<wrapper::TcpServer> TcpServerBuilder<State>::build() {
   return server;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::auto_start(bool auto_start) {
+TcpServerBuilder& TcpServerBuilder::auto_start(bool auto_start) {
   auto_start_ = auto_start;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::bind_address(const std::string& address) {
+TcpServerBuilder& TcpServerBuilder::bind_address(const std::string& address) {
   bind_address_ = address;
   bind_address_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::independent_context(bool use_independent) {
+TcpServerBuilder& TcpServerBuilder::independent_context(bool use_independent) {
   independent_context_ = use_independent;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::shared_context(bool use_shared) {
+TcpServerBuilder& TcpServerBuilder::shared_context(bool use_shared) {
   shared_context_ = use_shared;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::max_clients(uint32_t max_clients) {
+TcpServerBuilder& TcpServerBuilder::max_clients(uint32_t max_clients) {
   max_clients_ = max_clients;
   client_limit_enabled_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::enable_port_retry(bool enable) {
+TcpServerBuilder& TcpServerBuilder::enable_port_retry(bool enable) {
   port_retry_enabled_ = enable;
   port_retry_enabled_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::max_port_retries(uint32_t max_retries) {
+TcpServerBuilder& TcpServerBuilder::max_port_retries(uint32_t max_retries) {
   max_port_retries_ = max_retries;
   max_port_retries_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::port_retry_interval(std::chrono::milliseconds interval) {
+TcpServerBuilder& TcpServerBuilder::port_retry_interval(std::chrono::milliseconds interval) {
   port_retry_interval_ms_ = static_cast<uint32_t>(interval.count());
   port_retry_interval_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::tcp_no_delay(bool enable) {
+TcpServerBuilder& TcpServerBuilder::tcp_no_delay(bool enable) {
   tcp_no_delay_ = enable;
   tcp_no_delay_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::keep_alive(bool enable) {
+TcpServerBuilder& TcpServerBuilder::keep_alive(bool enable) {
   keep_alive_ = enable;
   keep_alive_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::send_buffer_size(size_t bytes) {
+TcpServerBuilder& TcpServerBuilder::send_buffer_size(size_t bytes) {
   send_buffer_size_ = bytes;
   send_buffer_size_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::receive_buffer_size(size_t bytes) {
+TcpServerBuilder& TcpServerBuilder::receive_buffer_size(size_t bytes) {
   receive_buffer_size_ = bytes;
   receive_buffer_size_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::read_buffer_size(size_t bytes) {
+TcpServerBuilder& TcpServerBuilder::read_buffer_size(size_t bytes) {
   read_buffer_size_ = bytes;
   read_buffer_size_set_ = true;
   return *this;
 }
 
 // Backward compatibility implementations
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::port_retry(bool enable, int max_retries, int retry_interval_ms) {
+TcpServerBuilder& TcpServerBuilder::port_retry(bool enable, int max_retries, int retry_interval_ms) {
   port_retry_enabled_ = enable;
   port_retry_enabled_set_ = true;
   max_port_retries_ = static_cast<uint32_t>(max_retries);
@@ -203,22 +187,19 @@ TcpServerBuilder<State>& TcpServerBuilder<State>::port_retry(bool enable, int ma
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::idle_timeout(std::chrono::milliseconds timeout) {
+TcpServerBuilder& TcpServerBuilder::idle_timeout(std::chrono::milliseconds timeout) {
   idle_timeout_ = timeout;
   idle_timeout_set_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::single_client() {
+TcpServerBuilder& TcpServerBuilder::single_client() {
   max_clients_ = 1;
   client_limit_enabled_ = true;
   return *this;
 }
 
-template <uint32_t State>
-TcpServerBuilder<State>& TcpServerBuilder<State>::multi_client(size_t max) {
+TcpServerBuilder& TcpServerBuilder::multi_client(size_t max) {
   if (max == 0) {
     throw diagnostics::BuilderException("multi_client max must be greater than 0");
   }
@@ -228,10 +209,6 @@ TcpServerBuilder<State>& TcpServerBuilder<State>::multi_client(size_t max) {
 }
 
 // Explicit template instantiations
-template class TcpServerBuilder<BuilderState::None>;
-template class TcpServerBuilder<BuilderState::HasData>;
-template class TcpServerBuilder<BuilderState::HasError>;
-template class TcpServerBuilder<BuilderState::Ready>;
 
 }  // namespace builder
 }  // namespace wirestead

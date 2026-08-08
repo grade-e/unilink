@@ -84,10 +84,10 @@ TEST(UdpBuilderOptionsTest, UdpServerBuilderSetters) {
 }
 
 TEST(UdpBuilderOptionsTest, UdpClientBuilderSettersAfterDataHandler) {
-  auto builder = builder::UdpClientBuilder<>(0).on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
+  auto builder = builder::UdpClientBuilder(0);
+  builder.on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
 
-  auto udp = std::move(builder)
-                 .auto_start(false)
+  auto udp = builder.auto_start(false)
                  .local_port(0)
                  .bind_address("127.0.0.1")
                  .remote_endpoint("127.0.0.1", 5678)
@@ -109,10 +109,10 @@ TEST(UdpBuilderOptionsTest, UdpClientBuilderSettersAfterDataHandler) {
 }
 
 TEST(UdpBuilderOptionsTest, UdpClientBuilderSettersAfterErrorHandler) {
-  auto builder = builder::UdpClientBuilder<>(0).on_error([](const wrapper::ErrorContext&) {});
+  auto builder = builder::UdpClientBuilder(0);
+  builder.on_error([](const wrapper::ErrorContext&) {});
 
-  auto udp = std::move(builder)
-                 .auto_start(false)
+  auto udp = builder.auto_start(false)
                  .local_port(0)
                  .bind_address("0.0.0.0")
                  .remote("127.0.0.1", 5678)
@@ -132,10 +132,10 @@ TEST(UdpBuilderOptionsTest, UdpClientBuilderSettersAfterErrorHandler) {
 }
 
 TEST(UdpBuilderOptionsTest, UdpServerBuilderSettersAfterDataHandler) {
-  auto builder = builder::UdpServerBuilder<>(0).on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
+  auto builder = builder::UdpServerBuilder(0);
+  builder.on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
 
-  auto server = std::move(builder)
-                    .auto_start(false)
+  auto server = builder.auto_start(false)
                     .local_port(0)
                     .bind_address("127.0.0.1")
                     .max_clients(2)
@@ -158,10 +158,10 @@ TEST(UdpBuilderOptionsTest, UdpServerBuilderSettersAfterDataHandler) {
 }
 
 TEST(UdpBuilderOptionsTest, UdpServerBuilderSettersAfterErrorHandler) {
-  auto builder = builder::UdpServerBuilder<>(0).on_error([](const wrapper::ErrorContext&) {});
+  auto builder = builder::UdpServerBuilder(0);
+  builder.on_error([](const wrapper::ErrorContext&) {});
 
-  auto server = std::move(builder)
-                    .auto_start(false)
+  auto server = builder.auto_start(false)
                     .local_port(0)
                     .bind_address("0.0.0.0")
                     .max_clients(3)
@@ -182,8 +182,8 @@ TEST(UdpBuilderOptionsTest, UdpServerBuilderSettersAfterErrorHandler) {
 }
 
 TEST(UdpBuilderOptionsTest, MissingCallbacksAreAllowed) {
-  auto client = builder::UdpClientBuilder<>(0).auto_start(false).build();
-  auto server = builder::UdpServerBuilder<>(0).auto_start(false).build();
+  auto client = builder::UdpClientBuilder(0).auto_start(false).build();
+  auto server = builder::UdpServerBuilder(0).auto_start(false).build();
 
   EXPECT_NE(client, nullptr);
   EXPECT_NE(server, nullptr);

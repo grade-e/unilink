@@ -34,6 +34,23 @@ These APIs are available, but may still change before v1.0:
 - config APIs
 - diagnostics APIs
 
+## Builder return convention
+
+Every builder setter returns `Derived&` and mutates the builder in place, so a
+chain and a sequence of separate statements do the same thing:
+
+```cpp
+auto b = wirestead::tcp_client("127.0.0.1", 8080);
+b.on_data(handler);          // b is still usable
+auto client = b.on_error(eh).build();
+```
+
+Before v0.9.3 the handler setters instead returned a new builder of a different
+type and left the original moved-from, while the other setters returned a
+reference. That split is gone, along with the `BuilderState` template parameter
+and the `Rebind` alias. See the CHANGELOG for what to change; chained code,
+which is how every example is written, needs nothing.
+
 ## ABI
 
 C++ ABI stability is not guaranteed before v1.0. The v0.9.0 Wirestead rename

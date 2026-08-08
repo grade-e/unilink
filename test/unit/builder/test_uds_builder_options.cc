@@ -69,11 +69,10 @@ TEST(UdsBuilderOptionsTest, UdsServerBuilderSetters) {
 }
 
 TEST(UdsBuilderOptionsTest, UdsClientBuilderSettersAfterDataHandler) {
-  auto builder = builder::UdsClientBuilder("/tmp/test_uds_client_builder_data.sock")
-                     .on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
+  auto builder = builder::UdsClientBuilder("/tmp/test_uds_client_builder_data.sock");
+  builder.on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
 
-  auto client = std::move(builder)
-                    .auto_start(false)
+  auto client = builder.auto_start(false)
                     .independent_context(false)
                     .retry_interval(200ms)
                     .max_retries(2)
@@ -93,12 +92,10 @@ TEST(UdsBuilderOptionsTest, UdsClientBuilderSettersAfterDataHandler) {
 }
 
 TEST(UdsBuilderOptionsTest, UdsClientBuilderSettersAfterErrorHandler) {
-  auto builder =
-      builder::UdsClientBuilder("/tmp/test_uds_client_builder_error.sock").on_error([](const wrapper::ErrorContext&) {
-      });
+  auto builder = builder::UdsClientBuilder("/tmp/test_uds_client_builder_error.sock");
+  builder.on_error([](const wrapper::ErrorContext&) {});
 
-  auto client = std::move(builder)
-                    .auto_start(false)
+  auto client = builder.auto_start(false)
                     .independent_context(true)
                     .retry_interval(250ms)
                     .max_retries(3)
@@ -116,11 +113,10 @@ TEST(UdsBuilderOptionsTest, UdsClientBuilderSettersAfterErrorHandler) {
 }
 
 TEST(UdsBuilderOptionsTest, UdsServerBuilderSettersAfterDataHandler) {
-  auto builder = builder::UdsServerBuilder("/tmp/test_uds_server_builder_data.sock")
-                     .on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
+  auto builder = builder::UdsServerBuilder("/tmp/test_uds_server_builder_data.sock");
+  builder.on_data_batch([](const std::vector<wrapper::MessageContext>&) {});
 
-  auto server = std::move(builder)
-                    .auto_start(false)
+  auto server = builder.auto_start(false)
                     .independent_context(false)
                     .idle_timeout(250ms)
                     .max_clients(2)
@@ -139,12 +135,10 @@ TEST(UdsBuilderOptionsTest, UdsServerBuilderSettersAfterDataHandler) {
 }
 
 TEST(UdsBuilderOptionsTest, UdsServerBuilderSettersAfterErrorHandler) {
-  auto builder =
-      builder::UdsServerBuilder("/tmp/test_uds_server_builder_error.sock").on_error([](const wrapper::ErrorContext&) {
-      });
+  auto builder = builder::UdsServerBuilder("/tmp/test_uds_server_builder_error.sock");
+  builder.on_error([](const wrapper::ErrorContext&) {});
 
-  auto server = std::move(builder)
-                    .auto_start(false)
+  auto server = builder.auto_start(false)
                     .independent_context(true)
                     .idle_timeout(500ms)
                     .max_clients(3)
