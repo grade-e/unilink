@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## Unreleased
+## v0.9.3 - 2026-08-08
 
 ### Breaking
 
@@ -120,6 +120,18 @@ and ABI policy.
   callback. It assigned without the lock while the strand-confined read site
   took it, against the member's own documented invariant, so replacing the
   callback on a running channel raced with the receive path.
+
+### Compatibility
+
+- The shared library exports 440 fewer symbols than v0.9.2: 1366 down to 1057.
+  436 of those are builder template instantiations that no longer exist —
+  collapsing `Rebind` removed four instantiations per builder across seven
+  builders. The remaining four are `TcpServerSession` and `UdsServerSession`
+  constructors whose signatures changed with the gather-write work. No
+  Wirestead API was removed other than the builder state machinery described
+  under Breaking.
+- Consumers must rebuild, as for any pre-1.0 release; see
+  `docs/api_stability.md`.
 
 ## v0.9.2 - 2026-08-01
 
