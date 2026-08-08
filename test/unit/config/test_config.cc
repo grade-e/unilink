@@ -1147,3 +1147,26 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+// read_chunk is the serial counterpart of read_buffer_size and shares its
+// bounds. Left unclamped, a 0 reaches the transport as rx_.resize(0).
+TEST(SerialConfigReadChunkTest, ClampsToTheSharedReadBufferBounds) {
+  config::SerialConfig low;
+  low.read_chunk = 1;
+  low.validate_and_clamp();
+  EXPECT_EQ(low.read_chunk, base::constants::MIN_READ_BUFFER_SIZE);
+
+  config::SerialConfig high;
+  high.read_chunk = base::constants::MAX_READ_BUFFER_SIZE * 4;
+  high.validate_and_clamp();
+  EXPECT_EQ(high.read_chunk, base::constants::MAX_READ_BUFFER_SIZE);
+
+  config::SerialConfig ok;
+  ok.read_chunk = 16384;
+  ok.validate_and_clamp();
+  EXPECT_EQ(ok.read_chunk, 16384U) << "a value inside the bounds must be left alone";
+
+  config::SerialConfig zero;
+  zero.read_chunk = 0;
+  EXPECT_FALSE(zero.is_valid()) << "is_valid must reject what validate_and_clamp would have to fix";
+}

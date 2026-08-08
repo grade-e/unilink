@@ -60,7 +60,10 @@ class WIRESTEAD_API MemoryPool {
     XLARGE = 65536  // 64KB - bulk operations
   };
 
-  explicit MemoryPool(size_t initial_pool_size = 400, size_t max_pool_size = 2000);
+  // initial_pool_size buffers are created up front, split evenly across the
+  // four size buckets. It defaults to 0 because the buckets run 1 KiB to
+  // 64 KiB: prefilling 400 would reserve 8.3 MiB before the first acquire().
+  explicit MemoryPool(size_t initial_pool_size = 0, size_t max_pool_size = 2000);
   ~MemoryPool() = default;
 
   // Non-copyable, non-movable

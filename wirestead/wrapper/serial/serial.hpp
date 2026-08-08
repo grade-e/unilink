@@ -106,6 +106,9 @@ class WIRESTEAD_API Serial : public ChannelInterface {
   Serial& stop_bits(int stop_bits);
   Serial& parity(const std::string& parity);
   Serial& flow_control(const std::string& flow_control);
+  // Bytes each read fills, the serial counterpart of read_buffer_size() on the
+  // TCP and UDS wrappers. Clamped to [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
+  Serial& read_chunk(size_t bytes);
   Serial& reopen_on_error(bool enable);
   Serial& retry_interval(std::chrono::milliseconds interval);
   Serial& backpressure_threshold(size_t threshold);

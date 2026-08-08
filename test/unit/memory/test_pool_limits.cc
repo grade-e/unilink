@@ -119,8 +119,11 @@ TEST_F(MemoryPoolLimitsTest, LargeAllocation) {
 // this is what makes per-channel pools (one MemoryPool member per
 // transport instance) actually isolated from each other.
 TEST(PooledBufferPerPoolTest, DrawsFromAndReleasesToTheGivenPoolNotGlobal) {
-  MemoryPool pool_a(4, 16);
-  MemoryPool pool_b(4, 16);
+  // Prefill is deliberately 0: this test is about which pool a PooledBuffer
+  // draws from, and the hit counts below only mean that if the first acquire
+  // has to allocate rather than take a prefilled buffer.
+  MemoryPool pool_a(0, 16);
+  MemoryPool pool_b(0, 16);
 
   {
     PooledBuffer buf(MemoryPool::BufferSize::SMALL, pool_a);
@@ -142,3 +145,34 @@ TEST(PooledBufferPerPoolTest, DrawsFromAndReleasesToTheGivenPoolNotGlobal) {
 }
 
 }  // namespace
+
+// initial_pool_size used to be (void)-discarded, so the pool always started
+// empty however much the caller asked for. Now it prefills, split evenly
+// across the four buckets - which means the first acquire is a hit rather
+// than an allocation.
+TEST(MemoryPoolPrefillTest, InitialPoolSizePrefillsTheBuckets) {
+  MemoryPool prefilled(4, 16);  // 4 buckets, so one buffer each
+
+  {
+    PooledBuffer buf(MemoryPool::BufferSize::SMALL, prefilled);
+    ASSERT_TRUE(buf.valid());
+  }
+  // pool_hits is the assertion that matters: a hit on the very first acquire is
+  // only possible if the bucket was prefilled. total_allocations counts every
+  // acquire, hits included, so it is 1 either way and proves nothing here.
+  EXPECT_EQ(prefilled.stats().pool_hits, 1U) << "the prefilled buffer should have satisfied the first acquire";
+}
+
+// The default has to stay 0. The buckets run 1 KiB to 64 KiB, so a nominal
+// 400 would reserve 8.3 MiB before the first acquire - a cost the old
+// discarded parameter never actually charged.
+TEST(MemoryPoolPrefillTest, DefaultConstructionPrefillsNothing) {
+  MemoryPool pool;
+
+  {
+    PooledBuffer buf(MemoryPool::BufferSize::SMALL, pool);
+    ASSERT_TRUE(buf.valid());
+  }
+  EXPECT_EQ(pool.stats().pool_hits, 0U) << "an unprefilled pool has nothing to hit on the first acquire";
+  EXPECT_EQ(pool.stats().total_allocations, 1U);
+}

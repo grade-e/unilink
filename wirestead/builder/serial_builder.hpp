@@ -62,7 +62,9 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
         flow_(other.flow_),
         flow_set_(other.flow_set_),
         reopen_on_error_(other.reopen_on_error_),
-        reopen_on_error_set_(other.reopen_on_error_set_) {
+        reopen_on_error_set_(other.reopen_on_error_set_),
+        read_chunk_(other.read_chunk_),
+        read_chunk_set_(other.read_chunk_set_) {
     this->on_data_ = std::move(other.on_data_);
     this->on_error_ = std::move(other.on_error_);
     this->on_connect_ = std::move(other.on_connect_);
@@ -92,6 +94,9 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   SerialBuilder<State>& parity(const std::string& p);
   SerialBuilder<State>& flow_control(config::SerialConfig::Flow f);
   SerialBuilder<State>& flow_control(const std::string& f);
+  // Bytes each read fills. The TCP and UDS builders call the same knob
+  // read_buffer_size(); serial named it read_chunk before those existed.
+  SerialBuilder<State>& read_chunk(size_t bytes);
   SerialBuilder<State>& reopen_on_error(bool enable = true);
   SerialBuilder<State>& retry_interval(std::chrono::milliseconds interval);
   SerialBuilder<State>& independent_context(bool use_independent = true);
@@ -123,6 +128,8 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   bool flow_set_{false};
   bool reopen_on_error_;
   bool reopen_on_error_set_{false};
+  size_t read_chunk_{base::constants::DEFAULT_READ_BUFFER_SIZE};
+  bool read_chunk_set_{false};
 };
 
 using SerialBuilderDefault = SerialBuilder<BuilderState::None>;

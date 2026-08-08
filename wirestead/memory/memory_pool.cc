@@ -36,9 +36,6 @@ MemoryPool& GlobalMemoryPool::instance() {
 // ============================================================================
 
 MemoryPool::MemoryPool(size_t initial_pool_size, size_t max_pool_size) {
-  // Suppress unused parameter warning since we reserve based on max_pool_size
-  (void)initial_pool_size;
-
   // Initialize 4 fixed-size pools
   static constexpr std::array<size_t, 4> BUCKET_SIZES = {
       static_cast<size_t>(BufferSize::SMALL),   // 1KB
@@ -51,6 +48,20 @@ MemoryPool::MemoryPool(size_t initial_pool_size, size_t max_pool_size) {
     buckets_[i].size_ = BUCKET_SIZES[i];
     buckets_[i].capacity_ = max_pool_size / buckets_.size();
     buckets_[i].buffers_.reserve(buckets_[i].capacity_);
+  }
+
+  // Prefill, split evenly across the buckets. This used to be discarded, so
+  // the pool always started empty whatever the caller asked for. It defaults
+  // to 0 rather than to the old nominal 400: the buckets run 1 KiB to 64 KiB,
+  // so honouring 400 would have meant 8.3 MiB reserved before the first
+  // acquire() - a cost the previous behaviour never actually charged, and one
+  // that matters on the embedded targets this library is aimed at.
+  const size_t per_bucket = initial_pool_size / buckets_.size();
+  for (auto& bucket : buckets_) {
+    const size_t count = std::min(per_bucket, bucket.capacity_);
+    for (size_t n = 0; n < count; ++n) {
+      bucket.buffers_.push_back(create_buffer(bucket.size_));
+    }
   }
 }
 
