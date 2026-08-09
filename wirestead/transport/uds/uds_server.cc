@@ -289,6 +289,11 @@ void UdsServer::start() {
   if (impl_->state_.get() == base::LinkState::Listening) return;
 
   impl_->stopping_ = false;
+  // Restart contract (#444): stats() resets on restart. The server-level
+  // counters now outlive the sessions that fed them, so clearing them here is
+  // what keeps that promise - before absorption they were empty and a restart
+  // zeroed the aggregate for free.
+  impl_->stats_.reset(0);
 
   if (!impl_->cfg_.is_valid()) {
     WIRESTEAD_LOG_ERROR("uds_server", "start", "Invalid UDS server configuration or socket path");
@@ -663,6 +668,13 @@ void UdsServer::Impl::do_accept(std::shared_ptr<UdsServer> self) {
         {
           std::lock_guard<std::mutex> lock(s->impl_->sessions_mutex_);
           if (s->impl_->stopping_) return;  // Double check inside lock
+          // Carry the session's totals over to the server before it goes away,
+          // so stats() keeps reporting what this connection did. Tied to the
+          // erase below, which makes it exactly once even if on_close re-fires.
+          auto it = s->impl_->sessions_.find(client_id);
+          if (it != s->impl_->sessions_.end() && it->second) {
+            s->impl_->stats_.absorb(it->second->stats());
+          }
           s->impl_->sessions_.erase(client_id);
           disconnect_handler = s->impl_->on_multi_disconnect_;
         }

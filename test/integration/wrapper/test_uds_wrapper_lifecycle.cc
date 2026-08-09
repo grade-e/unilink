@@ -305,6 +305,45 @@ TEST(UdsServerWrapperLifecycleTest, FramedMessageDoesNotDeadlock) {
   EXPECT_TRUE(wirestead::test::TestUtils::waitForCondition([&]() { return messages.load() == 1; }, 5000));
 }
 
+// Mirrors CumulativeStatsSurviveClientDisconnect in the TCP lifecycle suite.
+// UdsServer aggregates its sessions the same way and lost their counters the
+// same way when a client went. See docs/error_model.md.
+TEST(UdsServerWrapperLifecycleTest, CumulativeStatsSurviveClientDisconnect) {
+  test::wrapper_support::UdsServerLoopbackHarness harness("uws-stats");
+  auto server = harness.start_server();
+  auto client = harness.connect_client();
+  ASSERT_TRUE(harness.wait_for_client_count(1));
+
+  const std::string payload = "stats-survive-probe\n";
+  ASSERT_TRUE(client->send(payload));
+  ASSERT_TRUE(server->broadcast(payload));
+  ASSERT_TRUE(wirestead::test::TestUtils::waitForCondition(
+      [&]() {
+        const auto s = server->stats();
+        return s.bytes_received >= payload.size() && s.bytes_accepted >= payload.size();
+      },
+      10000));
+
+  const auto connected = server->stats();
+  ASSERT_GT(connected.bytes_received, 0u);
+  ASSERT_GT(connected.bytes_accepted, 0u);
+
+  client->stop();
+  ASSERT_TRUE(wirestead::test::TestUtils::waitForCondition([&]() { return server->client_count() == 0; }, 10000));
+
+  // client_count() drops a session as soon as it stops being alive, which is
+  // before the server erases it, so assert the negative: give the teardown room
+  // to run and require that the counters never collapse.
+  const bool collapsed =
+      wirestead::test::TestUtils::waitForCondition([&]() { return server->stats().bytes_received == 0; }, 2000);
+  EXPECT_FALSE(collapsed) << "cumulative counters vanished along with the disconnected session";
+
+  const auto after = server->stats();
+  EXPECT_GE(after.bytes_received, connected.bytes_received);
+  EXPECT_GE(after.bytes_accepted, connected.bytes_accepted);
+  EXPECT_EQ(after.queued_bytes, 0u);
+}
+
 TEST(UdsServerWrapperContractTest, InjectedChannelStateAndFallbackOperations) {
   auto fake_channel = std::make_shared<test::wrapper_support::FakeChannel>();
   UdsServer server(std::static_pointer_cast<interface::Channel>(fake_channel));

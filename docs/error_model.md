@@ -109,6 +109,25 @@ corresponding per-transport `RuntimeStats` counters: Reliable fanout rejects
 increase `failed_sends`, while BestEffort fanout drops increase
 `dropped_messages` and `dropped_bytes`.
 
+## Server stats across disconnects
+
+A server accumulates its counters per accepted session, and its `stats()` adds
+them up. The two halves of the snapshot behave differently when a client goes
+away:
+
+- **Cumulative fields survive.** `bytes_*`, `messages_*`, `failed_sends`,
+  `dropped_*` and `backpressure_events` carry over to the server when a session
+  closes, so sampling `stats()` on an interval sees monotonic totals rather than
+  a collapse to zero on every disconnect. `max_queued_bytes` likewise keeps the
+  deepest queue any session reached, live or closed.
+- **Instantaneous fields describe live sessions only.** `queued_bytes`,
+  `pending_bytes` and `backpressure_active` refer to queues that exist right
+  now, so a disconnected session contributes nothing to them.
+
+`reset_stats()` clears both halves. So does a restart: per the restart contract
+on `ServerInterface`, `stop()` followed by `start()` begins a fresh lifecycle
+with zeroed counters.
+
 ## Async runtime errors
 
 Use `on_error(...)` for production workflows. `ErrorContext` contains:

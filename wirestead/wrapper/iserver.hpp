@@ -78,6 +78,19 @@ class WIRESTEAD_API ServerInterface {
    */
   virtual void stop() = 0;
   virtual bool listening() const = 0;
+
+  /**
+   * @brief Snapshot of this server's runtime counters.
+   *
+   * The cumulative fields (`bytes_*`, `messages_*`, `failed_sends`, `dropped_*`,
+   * `backpressure_events`, `max_queued_bytes`) cover every session this server
+   * has accepted, including ones that have since disconnected. The
+   * instantaneous fields (`queued_bytes`, `pending_bytes`,
+   * `backpressure_active`) describe only the sessions that are live right now.
+   *
+   * Cleared by reset_stats(), and by a stop()/start() cycle per the restart
+   * contract above. See docs/error_model.md.
+   */
   virtual RuntimeStats stats() const = 0;
   virtual void reset_stats() = 0;
 
