@@ -18,6 +18,7 @@
 
 #include <spdlog/fmt/fmt.h>
 
+#include <algorithm>
 #include <atomic>
 #include <boost/asio.hpp>
 #include <future>
@@ -640,7 +641,9 @@ wrapper::RuntimeStats TcpServer::stats() const {
     aggregate.backpressure_events += session_stats.backpressure_events;
     aggregate.queued_bytes += session_stats.queued_bytes;
     aggregate.pending_bytes += session_stats.pending_bytes;
-    aggregate.max_queued_bytes += session_stats.max_queued_bytes;
+    // Peak, not a total: summing per-session peaks would report a depth no
+    // session ever reached, because the peaks need not have been simultaneous.
+    aggregate.max_queued_bytes = std::max(aggregate.max_queued_bytes, session_stats.max_queued_bytes);
     aggregate.backpressure_active = aggregate.backpressure_active || session_stats.backpressure_active;
   }
   return aggregate;
