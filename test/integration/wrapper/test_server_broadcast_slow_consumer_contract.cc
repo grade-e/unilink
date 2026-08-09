@@ -152,6 +152,62 @@ TEST(ServerBroadcastSlowConsumerContractTest, TcpBroadcastContinuesDeliveringToH
   server->stop();
 }
 
+// max_queued_bytes is a high-water mark, so the server-wide value is the
+// largest depth any one session reached - not the sum of every session's peak,
+// which would report a depth that never existed because the peaks need not
+// have been simultaneous.
+TEST(ServerBroadcastSlowConsumerContractTest, TcpAggregateMaxQueuedBytesIsPeakNotSum) {
+  uint16_t port = 0;
+  try {
+    port = TestUtils::getAvailableTestPort();
+  } catch (const std::exception& ex) {
+    if (is_port_allocation_failure(ex)) {
+      GTEST_SKIP() << "TCP port allocation unavailable in this environment: " << ex.what();
+    }
+    throw;
+  }
+
+  constexpr size_t kQueueBudget = 64 * 1024;
+  const std::string payload(4096, 'q');
+
+  // BestEffort drops rather than growing past the threshold, which puts a known
+  // ceiling on how deep any single session's queue can get.
+  auto server = std::make_shared<wirestead::wrapper::TcpServer>(port);
+  server->backpressure_strategy(wirestead::base::constants::BackpressureStrategy::BestEffort)
+      .backpressure_threshold(kQueueBudget)
+      .send_buffer_size(kThreshold);
+  ASSERT_TRUE(server->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->listening(); }, 5000));
+
+  // Two consumers that never read, so both sessions back up at once.
+  net::io_context slow_ioc;
+  tcp::socket slow_a(slow_ioc);
+  tcp::socket slow_b(slow_ioc);
+  const auto endpoint = tcp::endpoint(net::ip::make_address("127.0.0.1"), port);
+  slow_a.connect(endpoint);
+  slow_b.connect(endpoint);
+  slow_a.set_option(net::socket_base::receive_buffer_size(static_cast<int>(kThreshold)));
+  slow_b.set_option(net::socket_base::receive_buffer_size(static_cast<int>(kThreshold)));
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->client_count() >= 2; }, 5000));
+
+  for (int i = 0; i < 4096 && server->stats().dropped_bytes == 0; ++i) {
+    server->broadcast(payload);
+  }
+
+  const auto stats = server->stats();
+  ASSERT_GT(stats.dropped_bytes, 0u) << "session queues never reached the budget";
+  // queued_bytes is a genuine sum across sessions, so exceeding one budget is
+  // what proves both sessions are backed up simultaneously. Without that this
+  // assertion would pass even if only one session had ever queued anything.
+  ASSERT_GT(stats.queued_bytes, kQueueBudget) << "only one session backed up; the peak check cannot discriminate";
+  EXPECT_LE(stats.max_queued_bytes, kQueueBudget + payload.size());
+
+  boost::system::error_code ec;
+  slow_a.close(ec);
+  slow_b.close(ec);
+  server->stop();
+}
+
 TEST(ServerBroadcastSlowConsumerContractTest, UdpBroadcastDoesNotBlockOnSlowVirtualClient) {
   uint16_t port = 0;
   try {

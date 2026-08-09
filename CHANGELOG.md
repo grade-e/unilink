@@ -6,6 +6,18 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Fixed
+
+- `TcpServer::stats()` and `UdsServer::stats()` reported `max_queued_bytes` as
+  the sum of every live session's high-water mark. Peaks that occurred at
+  different times were added together, so the server could report a queue depth
+  that never existed: two sessions that each peaked at 200 KiB an hour apart
+  were reported as 400 KiB. The server-wide value is now the largest depth any
+  one session reached. Servers with a single connected client are unaffected.
+  The remaining fields are genuine totals and keep summing.
+
 ## v0.9.3 - 2026-08-08
 
 ### Breaking
