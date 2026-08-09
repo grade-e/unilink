@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>wirestead</name>
+  <version>0.9.3</version>
+  <description>Cross-platform asynchronous C++ communication library for serial, TCP, UDP, and UDS transports.</description>
+
+  <maintainer email="jwsung91@gmail.com">Jinwoo Sung</maintainer>
+  <license>Apache-2.0</license>
+
+  <url type="website">https://wirestead.github.io/</url>
+  <url type="repository">https://github.com/wirestead/wirestead</url>
+  <url type="bugtracker">https://github.com/wirestead/wirestead/issues</url>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <depend>boost</depend>
+  <depend>spdlog</depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
