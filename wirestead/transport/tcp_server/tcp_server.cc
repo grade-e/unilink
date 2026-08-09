@@ -372,6 +372,13 @@ struct TcpServer::Impl {
         bool was_current = false;
         {
           std::lock_guard<std::mutex> lock(close_impl->sessions_mutex_);
+          // Carry the session's totals over to the server before it goes away,
+          // so stats() keeps reporting what this connection did. Tied to the
+          // erase below, which makes it exactly once even if on_close re-fires.
+          auto it = close_impl->sessions_.find(client_id);
+          if (it != close_impl->sessions_.end() && it->second) {
+            close_impl->stats_.absorb(it->second->stats());
+          }
           close_impl->sessions_.erase(client_id);
           was_current = (close_impl->current_session_ == new_session);
           if (was_current) {
@@ -549,6 +556,11 @@ void TcpServer::start() {
   }
   impl->stopping_.store(false);
   impl->cleanup_started_.store(false);
+  // Restart contract (#444): stats() resets on restart. The server-level
+  // counters now outlive the sessions that fed them, so clearing them here is
+  // what keeps that promise - before absorption they were empty and a restart
+  // zeroed the aggregate for free.
+  impl->stats_.reset(0);
 
   if (impl->uses_shared_context_) {
     auto& manager = concurrency::IoContextManager::instance();

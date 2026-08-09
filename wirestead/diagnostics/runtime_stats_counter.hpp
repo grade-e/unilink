@@ -75,6 +75,28 @@ struct RuntimeStatsCounters {
     }
   }
 
+  // Folds a finished contributor's totals in, so a server's counters outlive
+  // the session that produced them. The cumulative fields add; max_queued_bytes
+  // takes the deeper of the two peaks, matching how a server aggregates it
+  // across live sessions.
+  //
+  // queued_bytes, pending_bytes and backpressure_active are deliberately left
+  // out: they describe a live queue, and a contributor being absorbed no longer
+  // has one.
+  void absorb(const wrapper::RuntimeStats& other) {
+    bytes_accepted.fetch_add(other.bytes_accepted, std::memory_order_relaxed);
+    messages_accepted.fetch_add(other.messages_accepted, std::memory_order_relaxed);
+    bytes_sent.fetch_add(other.bytes_sent, std::memory_order_relaxed);
+    messages_sent.fetch_add(other.messages_sent, std::memory_order_relaxed);
+    bytes_received.fetch_add(other.bytes_received, std::memory_order_relaxed);
+    messages_received.fetch_add(other.messages_received, std::memory_order_relaxed);
+    failed_sends.fetch_add(other.failed_sends, std::memory_order_relaxed);
+    dropped_messages.fetch_add(other.dropped_messages, std::memory_order_relaxed);
+    dropped_bytes.fetch_add(other.dropped_bytes, std::memory_order_relaxed);
+    backpressure_events.fetch_add(other.backpressure_events, std::memory_order_relaxed);
+    observe_queue(other.max_queued_bytes);
+  }
+
   wrapper::RuntimeStats snapshot(size_t queued_bytes, size_t pending_bytes, bool backpressure_active) const {
     wrapper::RuntimeStats stats;
     stats.bytes_accepted = bytes_accepted.load(std::memory_order_relaxed);

@@ -8,6 +8,23 @@ and ABI policy.
 
 ## Unreleased
 
+### Changed
+
+- A server's cumulative `RuntimeStats` counters now survive the sessions that
+  produced them. `TcpServer::stats()` and `UdsServer::stats()` aggregate live
+  sessions, and a session's counters used to be destroyed along with the session
+  on disconnect - so a server that had moved 795 MB reported zero the moment its
+  last client went away, and anything sampling `stats()` on an interval watched
+  throughput collapse on every disconnect. A closing session's totals are now
+  folded into the server before it is erased.
+
+  This applies to `bytes_*`, `messages_*`, `failed_sends`, `dropped_*` and
+  `backpressure_events`; `max_queued_bytes` keeps the deepest queue any session
+  reached. `queued_bytes`, `pending_bytes` and `backpressure_active` are
+  unchanged - they describe live queues, and a closed session has none. The
+  restart contract is unchanged too: `stop()` followed by `start()` still begins
+  with zeroed counters.
+
 ### Fixed
 
 - `TcpServer::stats()` and `UdsServer::stats()` reported `max_queued_bytes` as

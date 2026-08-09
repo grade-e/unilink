@@ -544,4 +544,63 @@ TEST_F(TcpServerWrapperLifecycleTest, LineSendingVariantsReachConnectedClients) 
   EXPECT_NE(received_data.find("try-send-to\n"), std::string::npos);
 }
 
+// A session's counters used to vanish with the session, so anything sampling
+// stats() on an interval watched server throughput collapse to zero on every
+// disconnect. The cumulative fields now survive the connection that produced
+// them; the instantaneous ones still describe live sessions only.
+TEST_F(TcpServerWrapperLifecycleTest, CumulativeStatsSurviveClientDisconnect) {
+  server_ = wirestead::tcp_server(test_port_).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  ASSERT_TRUE(server_->start().get());
+
+  const std::string payload = "stats-survive-probe\n";
+
+  auto client = wirestead::tcp_client("127.0.0.1", test_port_).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  ASSERT_TRUE(client->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server_->client_count() >= 1; }, 10000));
+
+  ASSERT_TRUE(client->send(payload));
+  ASSERT_TRUE(server_->broadcast(payload));
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&]() {
+        const auto s = server_->stats();
+        return s.bytes_received >= payload.size() && s.bytes_accepted >= payload.size();
+      },
+      10000));
+
+  const auto connected = server_->stats();
+  ASSERT_GT(connected.bytes_received, 0u);
+  ASSERT_GT(connected.bytes_accepted, 0u);
+
+  client->stop();
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server_->client_count() == 0; }, 10000));
+
+  // client_count() stops counting a session as soon as it is no longer alive,
+  // which is before the server erases it, so there is no observable moment to
+  // sample "just after the erase". Assert the negative instead: give the
+  // teardown room to run and require that the counters never collapse. Without
+  // the session's totals being carried over they drop to zero almost at once,
+  // so this is what discriminates.
+  const bool collapsed = TestUtils::waitForCondition([&]() { return server_->stats().bytes_received == 0; }, 2000);
+  EXPECT_FALSE(collapsed) << "cumulative counters vanished along with the disconnected session";
+
+  const auto after = server_->stats();
+  EXPECT_GE(after.bytes_received, connected.bytes_received);
+  EXPECT_GE(after.messages_received, connected.messages_received);
+  EXPECT_GE(after.bytes_accepted, connected.bytes_accepted);
+  EXPECT_GE(after.messages_accepted, connected.messages_accepted);
+
+  // The queue is gone with the session, so the instantaneous fields do drop.
+  EXPECT_EQ(after.queued_bytes, 0u);
+  EXPECT_FALSE(after.backpressure_active);
+
+  // A restart is a fresh lifecycle - see the restart contract on IServer.
+  server_->stop();
+  ASSERT_TRUE(server_->start().get());
+  const auto restarted = server_->stats();
+  EXPECT_EQ(restarted.bytes_received, 0u);
+  EXPECT_EQ(restarted.bytes_accepted, 0u);
+
+  client->stop();
+}
+
 }  // namespace
