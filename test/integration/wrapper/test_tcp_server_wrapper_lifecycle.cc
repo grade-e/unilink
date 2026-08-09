@@ -603,4 +603,63 @@ TEST_F(TcpServerWrapperLifecycleTest, CumulativeStatsSurviveClientDisconnect) {
   client->stop();
 }
 
+// The aggregate cannot tell you which client is responsible for the traffic it
+// reports. client_stats() answers that for the sessions that have their own
+// counters, and says so honestly when it cannot.
+TEST_F(TcpServerWrapperLifecycleTest, ClientStatsAreReportedPerSession) {
+  server_ = wirestead::tcp_server(test_port_).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  ASSERT_TRUE(server_->start().get());
+
+  const std::string small(64, 's');
+  const std::string large(4096, 'l');
+
+  auto quiet = wirestead::tcp_client("127.0.0.1", test_port_).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  auto noisy = wirestead::tcp_client("127.0.0.1", test_port_).on_data([](auto&&) {}).on_error([](auto&&) {}).build();
+  ASSERT_TRUE(quiet->start().get());
+  ASSERT_TRUE(noisy->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server_->client_count() >= 2; }, 10000));
+
+  const auto ids = server_->connected_clients();
+  ASSERT_EQ(ids.size(), 2u);
+
+  ASSERT_TRUE(quiet->send(small));
+  ASSERT_TRUE(noisy->send(large));
+
+  // Whichever id each client got, one session must show the small payload and
+  // the other the large one.
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&]() {
+        const auto a = server_->client_stats(ids[0]);
+        const auto b = server_->client_stats(ids[1]);
+        return a && b && a->bytes_received >= small.size() && b->bytes_received >= small.size() &&
+               (a->bytes_received >= large.size() || b->bytes_received >= large.size());
+      },
+      10000));
+
+  const auto a = server_->client_stats(ids[0]);
+  const auto b = server_->client_stats(ids[1]);
+  ASSERT_TRUE(a.has_value());
+  ASSERT_TRUE(b.has_value());
+
+  const auto& heavier = (a->bytes_received >= b->bytes_received) ? *a : *b;
+  const auto& lighter = (a->bytes_received >= b->bytes_received) ? *b : *a;
+  EXPECT_GE(heavier.bytes_received, large.size());
+  EXPECT_LT(lighter.bytes_received, large.size());
+
+  // The aggregate covers both, so it is at least their sum.
+  const auto aggregate = server_->stats();
+  EXPECT_GE(aggregate.bytes_received, a->bytes_received + b->bytes_received);
+
+  // An id that was never handed out has no session behind it.
+  EXPECT_FALSE(server_->client_stats(999999).has_value());
+
+  // After a disconnect the session is gone, so its counters are only reachable
+  // through the aggregate - see CumulativeStatsSurviveClientDisconnect.
+  quiet->stop();
+  noisy->stop();
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&]() { return !server_->client_stats(ids[0]) && !server_->client_stats(ids[1]); }, 10000));
+  EXPECT_GE(server_->stats().bytes_received, large.size());
+}
+
 }  // namespace

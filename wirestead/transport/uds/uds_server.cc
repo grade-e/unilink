@@ -597,6 +597,13 @@ std::vector<ClientId> UdsServer::connected_clients() const {
   return ids;
 }
 
+std::optional<wrapper::RuntimeStats> UdsServer::client_stats(ClientId client_id) const {
+  std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
+  auto it = impl_->sessions_.find(client_id);
+  if (it == impl_->sessions_.end() || !it->second) return std::nullopt;
+  return it->second->stats();
+}
+
 void UdsServer::set_client_limit(size_t max_clients) {
   std::lock_guard<std::mutex> lock(impl_->sessions_mutex_);
   impl_->cfg_.max_connections =

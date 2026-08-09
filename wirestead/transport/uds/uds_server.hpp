@@ -89,6 +89,7 @@ class WIRESTEAD_API UdsServer : public interface::Channel, public std::enable_sh
   bool try_send_to_client(ClientId client_id, memory::ConstByteSpan data);
   size_t client_count() const;
   std::vector<ClientId> connected_clients() const;
+  std::optional<wrapper::RuntimeStats> client_stats(ClientId client_id) const;
   void set_client_limit(size_t max_clients);
 
   using MultiClientConnectHandler = std::function<void(ClientId client_id, const std::string& client_info)>;

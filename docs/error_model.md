@@ -128,6 +128,30 @@ away:
 on `ServerInterface`, `stop()` followed by `start()` begins a fresh lifecycle
 with zeroed counters.
 
+## Per-client stats
+
+`stats()` cannot tell you which client produced the traffic it reports.
+`client_stats(client_id)` returns that one session's `RuntimeStats`, or
+`std::nullopt` when the id has no session behind it:
+
+```cpp
+for (auto id : server.connected_clients()) {
+  if (auto s = server.client_stats(id)) {
+    std::cout << id << ": " << s->bytes_received << " B in, " << s->dropped_bytes << " B dropped\n";
+  }
+}
+```
+
+Two limits are worth knowing before you build on it:
+
+- **It only answers for live sessions.** A disconnected client returns
+  `std::nullopt` - its totals have already been folded into `stats()` and the
+  session is gone. Sample while the client is connected if you need its numbers
+  in isolation.
+- **UDP always returns `std::nullopt`.** A UDP server groups datagrams into
+  virtual sessions keyed by source endpoint, and those have no queues or
+  counters of their own. Their traffic still shows up in the aggregate.
+
 ## Async runtime errors
 
 Use `on_error(...)` for production workflows. `ErrorContext` contains:

@@ -94,6 +94,7 @@ class WIRESTEAD_API TcpServer : public interface::Channel, public std::enable_sh
   bool try_send_to_client(ClientId client_id, memory::ConstByteSpan data);
   size_t client_count() const;
   std::vector<ClientId> connected_clients() const;
+  std::optional<wrapper::RuntimeStats> client_stats(ClientId client_id) const;
 
   void request_stop();
 
