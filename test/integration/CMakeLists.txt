@@ -42,25 +42,35 @@ function(wirestead_add_integration_gtest target source_path labels timeout)
   )
 endfunction()
 
-foreach(
-  test_file
-  test_integration.cc
-  test_simple_server.cc
-  test_client_limit_integration.cc
-  test_multithread_backpressure.cc
-  test_stop_from_callback.cc
-  test_start_stop_stress.cc
-  test_stop_contract.cc
-  test_dos_protection.cc
-  test_tcp_server_chaos.cc
-  test_tcp_flood.cc
-  test_tcp_abort.cc
-  test_tcp_cancel.cc
-  test_tcp_nodelay_default.cc
-  test_read_buffer_size.cc
-  test_gather_write.cc
-  test_receive_allocations.cc
+set(WIRESTEAD_TCP_INTEGRATION_TESTS
+    test_integration.cc
+    test_simple_server.cc
+    test_client_limit_integration.cc
+    test_multithread_backpressure.cc
+    test_stop_from_callback.cc
+    test_start_stop_stress.cc
+    test_stop_contract.cc
+    test_dos_protection.cc
+    test_tcp_server_chaos.cc
+    test_tcp_flood.cc
+    test_tcp_abort.cc
+    test_tcp_cancel.cc
+    test_tcp_nodelay_default.cc
+    test_read_buffer_size.cc
+    test_gather_write.cc
+    test_receive_allocations.cc
 )
+
+# test_receive_allocations replaces the global operator new/delete to count
+# allocations. ThreadSanitizer defines those itself in libclang_rt.tsan_cxx, so
+# linking the two together fails outright. Excluding the test loses nothing
+# under TSAN: counting allocations while a sanitizer owns allocation measures
+# the sanitizer, not the receive path.
+if(WIRESTEAD_ENABLE_TSAN)
+  list(REMOVE_ITEM WIRESTEAD_TCP_INTEGRATION_TESTS test_receive_allocations.cc)
+endif()
+
+foreach(test_file IN LISTS WIRESTEAD_TCP_INTEGRATION_TESTS)
   get_filename_component(test_name ${test_file} NAME_WE)
 
   set(timeout 300)
