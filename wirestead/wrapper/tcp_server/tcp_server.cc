@@ -679,6 +679,12 @@ std::vector<ClientId> TcpServer::connected_clients() const {
   return ts ? ts->connected_clients() : std::vector<ClientId>();
 }
 
+std::optional<RuntimeStats> TcpServer::client_stats(ClientId client_id) const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  const auto& ts = get_impl()->transport_cache_;
+  return ts ? ts->client_stats(client_id) : std::nullopt;
+}
+
 TcpServer& TcpServer::auto_start(bool m) {
   impl_->auto_start_.store(m);
   if (impl_->auto_start_.load() && !impl_->started_.load()) start();

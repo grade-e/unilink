@@ -19,6 +19,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -92,6 +93,21 @@ class WIRESTEAD_API ServerInterface {
    * contract above. See docs/error_model.md.
    */
   virtual RuntimeStats stats() const = 0;
+
+  /**
+   * @brief Counters for one connected client.
+   *
+   * Returns nullopt when the id is unknown - including for a client that has
+   * already disconnected, since a session's counters are folded into the
+   * server-wide stats() and the session itself is gone. Sample this while the
+   * client is connected if you need its numbers in isolation.
+   *
+   * Not every server can answer. UDP servers group datagrams into virtual
+   * sessions that have no queues or counters of their own, so they always
+   * return nullopt; their traffic is only visible in the aggregate.
+   */
+  virtual std::optional<RuntimeStats> client_stats(ClientId /*client_id*/) const { return std::nullopt; }
+
   virtual void reset_stats() = 0;
 
   // Transmission

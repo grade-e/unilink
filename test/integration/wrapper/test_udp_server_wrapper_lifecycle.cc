@@ -86,6 +86,38 @@ TEST(UdpServerWrapperLifecycleTest, SessionReaping) {
   server.stop();
 }
 
+// UDP groups datagrams into virtual sessions by source endpoint. Those have no
+// queues or counters of their own, so there is nothing per-client to report -
+// client_stats() says so rather than inventing a number, even while a virtual
+// session is live and visible through client_count().
+TEST(UdpServerWrapperLifecycleTest, ClientStatsUnsupportedForVirtualSessions) {
+  auto port = TestUtils::getAvailableTestPort();
+  config::UdpConfig cfg;
+  cfg.bind_address = "127.0.0.1";
+  cfg.local_port = port;
+
+  wrapper::UdpServer server(cfg);
+  auto started = server.start();
+  ASSERT_TRUE(started.get());
+
+  boost::asio::io_context ioc;
+  boost::asio::ip::udp::socket sock(ioc, boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), 0));
+  sock.send_to(boost::asio::buffer("hello", 5),
+               boost::asio::ip::udp::endpoint(boost::asio::ip::make_address("127.0.0.1"), port));
+
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server.client_count() == 1; }, 5000));
+
+  const auto ids = server.connected_clients();
+  ASSERT_EQ(ids.size(), 1u);
+  EXPECT_FALSE(server.client_stats(ids[0]).has_value());
+  EXPECT_FALSE(server.client_stats(999999).has_value());
+
+  // The traffic is still accounted for, just not per client.
+  EXPECT_GT(server.stats().bytes_received, 0u);
+
+  server.stop();
+}
+
 TEST(UdpServerWrapperLifecycleTest, DefaultIdleTimeoutDisabledKeepsVirtualSession) {
   auto port = TestUtils::getAvailableTestPort();
   config::UdpConfig cfg;

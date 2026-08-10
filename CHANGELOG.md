@@ -8,6 +8,25 @@ and ABI policy.
 
 ## Unreleased
 
+### Added
+
+- `ServerInterface::client_stats(ClientId)` returns one connected client's
+  `RuntimeStats`, or `std::nullopt` when the id has no session behind it.
+  `stats()` reports the server as a whole and cannot say which client produced
+  the traffic; the per-session counters existed already and were simply summed
+  away at the aggregation boundary.
+
+  Implemented for TCP and UDS. UDP returns `std::nullopt` - its virtual sessions
+  are datagrams grouped by source endpoint and have no queues or counters of
+  their own, so there is nothing per-client to report. A disconnected client also
+  returns `std::nullopt`: its totals live on in `stats()`, but the session does
+  not, so sample while it is connected if you need its numbers in isolation.
+
+  This adds a virtual to `ServerInterface`, which changes the vtable and so
+  breaks ABI. C++ ABI stability is not guaranteed before v1.0; see
+  `docs/api_stability.md`. It has a default returning `std::nullopt`, so any
+  out-of-tree implementer of the interface still compiles.
+
 ### Changed
 
 - A server's cumulative `RuntimeStats` counters now survive the sessions that

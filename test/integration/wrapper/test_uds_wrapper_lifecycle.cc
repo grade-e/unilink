@@ -344,6 +344,35 @@ TEST(UdsServerWrapperLifecycleTest, CumulativeStatsSurviveClientDisconnect) {
   EXPECT_EQ(after.queued_bytes, 0u);
 }
 
+TEST(UdsServerWrapperLifecycleTest, ClientStatsAreReportedPerSession) {
+  test::wrapper_support::UdsServerLoopbackHarness harness("uws-client-stats");
+  auto server = harness.start_server();
+  auto client = harness.connect_client();
+  ASSERT_TRUE(harness.wait_for_client_count(1));
+
+  const auto ids = server->connected_clients();
+  ASSERT_EQ(ids.size(), 1u);
+
+  const std::string payload(256, 'p');
+  ASSERT_TRUE(client->send(payload));
+  ASSERT_TRUE(wirestead::test::TestUtils::waitForCondition(
+      [&]() {
+        const auto s = server->client_stats(ids[0]);
+        return s && s->bytes_received >= payload.size();
+      },
+      10000));
+
+  const auto session = server->client_stats(ids[0]);
+  ASSERT_TRUE(session.has_value());
+  EXPECT_GE(server->stats().bytes_received, session->bytes_received);
+
+  EXPECT_FALSE(server->client_stats(999999).has_value());
+
+  client->stop();
+  EXPECT_TRUE(
+      wirestead::test::TestUtils::waitForCondition([&]() { return !server->client_stats(ids[0]).has_value(); }, 10000));
+}
+
 TEST(UdsServerWrapperContractTest, InjectedChannelStateAndFallbackOperations) {
   auto fake_channel = std::make_shared<test::wrapper_support::FakeChannel>();
   UdsServer server(std::static_pointer_cast<interface::Channel>(fake_channel));

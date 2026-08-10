@@ -594,6 +594,12 @@ std::vector<ClientId> UdsServer::connected_clients() const {
   return ts ? ts->connected_clients() : std::vector<ClientId>{};
 }
 
+std::optional<RuntimeStats> UdsServer::client_stats(ClientId client_id) const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  auto ts = std::dynamic_pointer_cast<transport::UdsServer>(impl_->server_);
+  return ts ? ts->client_stats(client_id) : std::nullopt;
+}
+
 UdsServer& UdsServer::auto_start(bool manage) {
   impl_->auto_start_.store(manage);
   if (impl_->auto_start_.load() && !impl_->started_.load()) {

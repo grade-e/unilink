@@ -890,6 +890,14 @@ size_t TcpServer::client_count() const {
   return alive;
 }
 
+std::optional<wrapper::RuntimeStats> TcpServer::client_stats(ClientId client_id) const {
+  auto impl = get_impl();
+  std::lock_guard<std::mutex> lock(impl->sessions_mutex_);
+  auto it = impl->sessions_.find(client_id);
+  if (it == impl->sessions_.end() || !it->second) return std::nullopt;
+  return it->second->stats();
+}
+
 std::vector<ClientId> TcpServer::connected_clients() const {
   auto impl = get_impl();
   std::lock_guard<std::mutex> lock(impl->sessions_mutex_);

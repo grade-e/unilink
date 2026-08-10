@@ -20,6 +20,7 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -93,6 +94,7 @@ class WIRESTEAD_API UdsServer : public ServerInterface {
   // Client count and management
   size_t client_count() const override;
   std::vector<ClientId> connected_clients() const override;
+  std::optional<RuntimeStats> client_stats(ClientId client_id) const override;
 
   // Configuration (Fluent API)
   UdsServer& auto_start(bool manage = true) override;
