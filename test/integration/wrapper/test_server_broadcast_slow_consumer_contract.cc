@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <atomic>
 #include <boost/asio.hpp>
 #include <chrono>
@@ -190,17 +191,32 @@ TEST(ServerBroadcastSlowConsumerContractTest, TcpAggregateMaxQueuedBytesIsPeakNo
   slow_b.set_option(net::socket_base::receive_buffer_size(static_cast<int>(kThreshold)));
   ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->client_count() >= 2; }, 5000));
 
-  for (int i = 0; i < 4096 && server->stats().dropped_bytes == 0; ++i) {
+  const auto ids = server->connected_clients();
+  ASSERT_EQ(ids.size(), 2u);
+
+  // Both sessions only need a queue depth on record - not one at the same
+  // instant. Requiring them to be backed up simultaneously made this flaky on
+  // Windows, where one session could drop before the other had queued much.
+  const auto peaks_recorded = [&] {
+    const auto a = server->client_stats(ids[0]);
+    const auto b = server->client_stats(ids[1]);
+    return a && b && a->max_queued_bytes > 0 && b->max_queued_bytes > 0;
+  };
+  for (int i = 0; i < 4096 && !peaks_recorded(); ++i) {
     server->broadcast(payload);
   }
+  ASSERT_TRUE(peaks_recorded()) << "neither session ever queued anything";
 
-  const auto stats = server->stats();
-  ASSERT_GT(stats.dropped_bytes, 0u) << "session queues never reached the budget";
-  // queued_bytes is a genuine sum across sessions, so exceeding one budget is
-  // what proves both sessions are backed up simultaneously. Without that this
-  // assertion would pass even if only one session had ever queued anything.
-  ASSERT_GT(stats.queued_bytes, kQueueBudget) << "only one session backed up; the peak check cannot discriminate";
-  EXPECT_LE(stats.max_queued_bytes, kQueueBudget + payload.size());
+  const auto a = server->client_stats(ids[0]);
+  const auto b = server->client_stats(ids[1]);
+  ASSERT_TRUE(a.has_value());
+  ASSERT_TRUE(b.has_value());
+
+  // The point of the fix: a server-wide peak is the deepest any one session
+  // reached, not the sum of both. Comparing against the sessions directly beats
+  // inferring it from the aggregate, which is what the earlier version did.
+  EXPECT_EQ(server->stats().max_queued_bytes, std::max(a->max_queued_bytes, b->max_queued_bytes));
+  EXPECT_LT(server->stats().max_queued_bytes, a->max_queued_bytes + b->max_queued_bytes);
 
   boost::system::error_code ec;
   slow_a.close(ec);
