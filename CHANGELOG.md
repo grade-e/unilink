@@ -23,6 +23,12 @@ and ABI policy.
   leaves plain sockets behaving exactly as before. Reads, writes, backpressure
   and stats are the same code either way.
 
+  Closing a TLS connection sends `close_notify` without waiting for the peer's
+  reply: the bidirectional exchange blocks until the peer answers, and a peer
+  that simply stops reading held `stop()` for 8 seconds in testing. `on_connect`
+  fires at accept, before the handshake, so a client that fails it produces a
+  balanced connect/disconnect pair with no data between.
+
   TLS 1.2 is the floor and is not configurable. Setting `tls()` in a build
   without `WIRESTEAD_ENABLE_TLS`, or pointing it at a certificate that cannot be
   loaded, makes `start()` fail - a server asked for encryption it cannot provide

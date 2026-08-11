@@ -36,6 +36,19 @@ What this does not do: no client certificates, no peer verification, no cipher
 suite or ALPN configuration, no certificate reload without a restart. If you need
 any of those, terminate TLS outside the library as described below.
 
+Two behaviours worth knowing:
+
+- **`on_connect` fires at accept, before the handshake.** A client that fails
+  the handshake still produces one `on_connect`, followed by an `on_disconnect`
+  with no `on_data` between them. The pair is always balanced, so bookkeeping
+  keyed on those callbacks does not leak - but treat the first byte of data, not
+  the callback, as proof a peer got through.
+- **Closing sends `close_notify` without waiting for the peer's.** A full
+  bidirectional TLS shutdown blocks until the peer answers, and a peer under no
+  obligation to answer would hold an io thread for as long as it liked -
+  measured at 8 seconds for two silent peers before this was changed. The peer
+  still sees a clean end of stream rather than a truncation.
+
 ### Everything else
 
 The TCP client, UDP, Serial and UDS have no encryption and no hook for adding

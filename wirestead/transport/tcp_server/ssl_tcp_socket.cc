@@ -18,6 +18,8 @@
 
 #ifdef WIRESTEAD_TLS_ENABLED
 
+#include <openssl/ssl.h>
+
 #include <utility>
 
 namespace wirestead {
@@ -48,15 +50,20 @@ void SslTcpSocket::async_handshake(std::function<void(const boost::system::error
                           });
 }
 
-// TLS wants close_notify sent before the transport goes away, but the caller
-// reaches here through the plain-socket shutdown() contract, which is
-// synchronous and cannot wait for the peer's reply. Send our half and drop the
-// connection: an unclean shutdown is visible to the peer as a truncated stream,
-// which is the same thing a TCP RST would tell it, and waiting here would block
-// the io thread on a peer that may never answer.
+// Sends close_notify without waiting for the peer's.
+//
+// ssl::stream::shutdown() is the obvious call here and is wrong: it runs the
+// full bidirectional exchange and blocks until the peer answers. Measured
+// against two peers that completed the handshake and then stopped reading,
+// stop() went from 0 ms to 8035 ms - an io thread parked on a peer under no
+// obligation to reply, for as long as it feels like not replying.
+//
+// SSL_shutdown's first call writes our close_notify and returns 0 rather than
+// waiting for the reply; only a second call would block for it. One call is
+// exactly the half we want. The peer sees a clean end of stream instead of a
+// truncation, and a peer that never answers costs us nothing.
 void SslTcpSocket::shutdown(tcp::socket::shutdown_type what, boost::system::error_code& ec) {
-  boost::system::error_code ignored;
-  stream_.shutdown(ignored);
+  ::SSL_shutdown(stream_.native_handle());
   stream_.lowest_layer().shutdown(what, ec);
 }
 
