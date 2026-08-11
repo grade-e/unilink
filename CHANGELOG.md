@@ -10,6 +10,12 @@ and ABI policy.
 
 ### Added
 
+- A one-time WARNING log the first time a channel drops queued data, pointing at
+  `RuntimeStats::dropped_bytes`. `BestEffort` discards by design and
+  `on_backpressure()` is not a reliable signal that it happened, so a caller who
+  never polls the counters could lose data in silence. Latched per channel, not
+  per drop - BestEffort can drop hundreds of thousands of times a second.
+
 - `ServerInterface::client_stats(ClientId)` returns one connected client's
   `RuntimeStats`, or `std::nullopt` when the id has no session behind it.
   `stats()` reports the server as a whole and cannot say which client produced

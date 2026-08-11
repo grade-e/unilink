@@ -105,4 +105,29 @@ TEST(RuntimeStatsCounterTest, ResetClearsCumulativeCountersAndSetsMaxQueueBaseli
   EXPECT_TRUE(stats.backpressure_active);
 }
 
+// BestEffort can drop hundreds of thousands of times a second, so the warning
+// has to be latched - it says "you are losing data" once, and dropped_bytes
+// carries the running total from there.
+TEST(RuntimeStatsCounterTest, DropWarningIsLatchedButCountersKeepAdding) {
+  RuntimeStatsCounters counters;
+
+  EXPECT_FALSE(counters.drop_warned.load());
+
+  counters.record_dropped(1, 10);
+  EXPECT_TRUE(counters.drop_warned.load());
+
+  counters.record_dropped(2, 20);
+  counters.record_dropped(3, 30);
+
+  const auto stats = counters.snapshot(0, 0, false);
+  EXPECT_EQ(stats.dropped_messages, 6u);
+  EXPECT_EQ(stats.dropped_bytes, 60u);
+
+  // reset() deliberately leaves the latch alone: the point is once per process,
+  // not once per measurement window.
+  counters.reset(0);
+  EXPECT_TRUE(counters.drop_warned.load());
+  EXPECT_EQ(counters.snapshot(0, 0, false).dropped_bytes, 0u);
+}
+
 }  // namespace
