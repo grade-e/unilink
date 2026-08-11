@@ -60,6 +60,9 @@ class WIRESTEAD_API TcpServerBuilder : public BuilderInterface<wrapper::TcpServe
   TcpServerBuilder& port_retry_interval(std::chrono::milliseconds interval);
   TcpServerBuilder& tcp_no_delay(bool enable = true);
   TcpServerBuilder& keep_alive(bool enable = true);
+  /** @brief Serve TLS using this certificate chain and private key (PEM). */
+  TcpServerBuilder& tls(const std::string& certificate_file, const std::string& private_key_file);
+
   TcpServerBuilder& send_buffer_size(size_t bytes);
   TcpServerBuilder& receive_buffer_size(size_t bytes);
 
@@ -109,6 +112,9 @@ class WIRESTEAD_API TcpServerBuilder : public BuilderInterface<wrapper::TcpServe
   bool tcp_no_delay_set_{false};
   bool keep_alive_;
   bool keep_alive_set_{false};
+  std::string tls_certificate_file_;
+  std::string tls_private_key_file_;
+
   size_t send_buffer_size_;
   bool send_buffer_size_set_{false};
   size_t receive_buffer_size_;

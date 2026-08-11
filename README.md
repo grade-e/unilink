@@ -21,7 +21,7 @@ Simple async C++ communication library for Serial, TCP, UDP, and Unix Domain Soc
 
 The project prioritizes **API clarity, predictable runtime behavior, and stability** over rapid feature expansion.
 
-> **Security note**: all transports send data in plaintext - there is no built-in TLS/DTLS support. See [Security and Threat Model](https://github.com/wirestead/wirestead/blob/main/docs/security.md) before using `wirestead` over an untrusted network.
+> **Security note**: transports send data in plaintext by default. The TCP server can serve TLS in a build configured with `-DWIRESTEAD_ENABLE_TLS=ON`; the TCP client, UDP, Serial and UDS cannot, and DTLS is not supported. See [Security and Threat Model](https://github.com/wirestead/wirestead/blob/main/docs/security.md) before using `wirestead` over an untrusted network.
 
 ## Feature Highlights
 

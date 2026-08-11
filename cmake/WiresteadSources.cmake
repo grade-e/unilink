@@ -26,6 +26,7 @@ set(WIRESTEAD_SOURCES
     wirestead/memory/safe_data_buffer.cc
     wirestead/transport/tcp_server/boost_tcp_acceptor.cc
     wirestead/transport/tcp_server/boost_tcp_socket.cc
+    wirestead/transport/tcp_server/ssl_tcp_socket.cc
     wirestead/transport/tcp_server/tcp_server_session.cc
     wirestead/transport/udp/udp.cc
     wirestead/transport/uds/boost_uds_acceptor.cc
@@ -100,6 +101,7 @@ set(WIRESTEAD_HEADERS
     wirestead/transport/tcp_client/tcp_client.hpp
     wirestead/transport/tcp_server/boost_tcp_acceptor.hpp
     wirestead/transport/tcp_server/boost_tcp_socket.hpp
+    wirestead/transport/tcp_server/ssl_tcp_socket.hpp
     wirestead/transport/tcp_server/tcp_server_session.hpp
     wirestead/transport/tcp_server/tcp_server.hpp
     wirestead/transport/udp/udp.hpp

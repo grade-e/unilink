@@ -56,7 +56,23 @@ class WIRESTEAD_API TcpSocketInterface {
   virtual void shutdown(net::ip::tcp::socket::shutdown_type what, boost::system::error_code& ec) = 0;
   virtual void close(boost::system::error_code& ec) = 0;
   virtual net::ip::tcp::endpoint remote_endpoint(boost::system::error_code& ec) const = 0;
+
+  // Runs whatever has to happen after accept and before the first read. A plain
+  // socket has nothing to do, so the default reports success and the caller
+  // proceeds exactly as it did before this existed; a TLS socket performs the
+  // handshake here. Failure is the session's cue to close rather than read.
+  //
+  // The handler runs on the caller's executor, not necessarily inline - bind it
+  // to the session strand the same way a read completion is bound.
+  virtual void async_handshake(std::function<void(const boost::system::error_code&)> handler);
 };
+
+// Nothing to negotiate on a plain socket. Posting rather than calling inline
+// would need an executor this interface does not carry, and every caller
+// already dispatches onto its own strand before getting here.
+inline void TcpSocketInterface::async_handshake(std::function<void(const boost::system::error_code&)> handler) {
+  if (handler) handler(boost::system::error_code());
+}
 
 // Flattens into one contiguous buffer and delegates. Copies, which is why a
 // socket-backed implementation overrides this; kept here so test doubles and
