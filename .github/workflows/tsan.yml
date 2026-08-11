@@ -9,6 +9,10 @@ on:
   schedule:
     - cron: "0 19 * * *"
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   tsan:
     name: TSAN focused contract tests
@@ -60,3 +64,24 @@ jobs:
           path: build-tsan/Testing/
           retention-days: 14
           overwrite: true
+
+      # Nothing watches a scheduled run. This one broke on 2026-08-08 and stayed
+      # broken for three nights before anyone noticed, so a failed nightly files
+      # an issue. Comment on the existing one rather than opening a new issue
+      # every 24 hours - one issue per outage, not per night.
+      - name: Report a failing nightly
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TITLE: "ThreadSanitizer nightly is failing"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Exact title match: `in:title` is a full-text search, so a loose
+          # match could comment on somebody else's issue instead of filing one.
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number,title \
+            | jq -r --arg t "$TITLE" '[.[] | select(.title == $t)] | .[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --title "$TITLE" --label bug --body "The nightly ThreadSanitizer run failed: $RUN_URL"
+          fi
