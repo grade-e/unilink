@@ -20,6 +20,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "wirestead/diagnostics/logger.hpp"
 #include "wirestead/wrapper/runtime_stats.hpp"
 
 namespace wirestead {
@@ -44,6 +45,10 @@ struct RuntimeStatsCounters {
 
   std::atomic<size_t> max_queued_bytes{0};
 
+  // Latched, deliberately not cleared by reset() - the warning below is meant
+  // to fire once in a process's life, not once per measurement window.
+  std::atomic<bool> drop_warned{false};
+
   void record_accepted(size_t bytes) {
     messages_accepted.fetch_add(1, std::memory_order_relaxed);
     bytes_accepted.fetch_add(bytes, std::memory_order_relaxed);
@@ -61,9 +66,19 @@ struct RuntimeStatsCounters {
 
   void record_failed_send() { failed_sends.fetch_add(1, std::memory_order_relaxed); }
 
+  // Every drop in the library routes through here. BestEffort discards by
+  // design and can do it hundreds of thousands of times a second, so the
+  // running total is the counter to watch - but a caller who never looks at it
+  // would otherwise lose data in complete silence, which is what makes the
+  // first one worth saying out loud exactly once.
   void record_dropped(size_t messages, size_t bytes) {
     dropped_messages.fetch_add(static_cast<uint64_t>(messages), std::memory_order_relaxed);
     dropped_bytes.fetch_add(static_cast<uint64_t>(bytes), std::memory_order_relaxed);
+    if (!drop_warned.exchange(true, std::memory_order_relaxed)) {
+      WIRESTEAD_LOG_WARNING("runtime_stats", "record_dropped",
+                            "Dropping queued data (BestEffort). Watch RuntimeStats::dropped_bytes - "
+                            "on_backpressure() is not a reliable loss signal under this strategy.");
+    }
   }
 
   void record_backpressure_event() { backpressure_events.fetch_add(1, std::memory_order_relaxed); }
