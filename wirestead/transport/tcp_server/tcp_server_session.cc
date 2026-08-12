@@ -78,7 +78,19 @@ void TcpServerSession::start() {
   auto self = shared_from_this();
   net::dispatch(strand_, [self] {
     self->reset_idle_timer();
-    self->start_read();
+    // No-op on a plain socket, the TLS handshake on an encrypted one. Reading
+    // before it completes would hand the session ciphertext, so the first read
+    // waits on it - and a failed handshake closes rather than reads.
+    self->socket_->async_handshake(net::bind_executor(self->strand_, [self](const boost::system::error_code& ec) {
+      if (self->closing_ || !self->alive_) return;
+      if (ec) {
+        WIRESTEAD_LOG_WARNING("tcp_server_session", "handshake", "Handshake failed: " + ec.message());
+        self->do_close();
+        return;
+      }
+      self->reset_idle_timer();
+      self->start_read();
+    }));
   });
 }
 

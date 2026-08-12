@@ -37,6 +37,7 @@
 #include "wirestead/interface/itcp_acceptor.hpp"
 #include "wirestead/transport/base/error_info_holder.hpp"
 #include "wirestead/transport/tcp_server/boost_tcp_acceptor.hpp"
+#include "wirestead/transport/tcp_server/ssl_tcp_socket.hpp"
 #include "wirestead/transport/tcp_server/tcp_server_session.hpp"
 
 namespace wirestead {
@@ -155,6 +156,51 @@ struct TcpServer::Impl {
       }
     } catch (...) {
     }
+  }
+
+  // One context for the whole server, shared by every accepted connection.
+  // Built once in start() so a bad certificate fails there rather than on the
+  // first client.
+#ifdef WIRESTEAD_TLS_ENABLED
+  std::shared_ptr<boost::asio::ssl::context> ssl_context_;
+#endif
+
+  // Builds the ssl::context, or reports why it cannot. Called from start(), so
+  // a certificate problem surfaces as a start failure with a message rather
+  // than as connections that mysteriously drop at handshake.
+  std::string init_tls() {
+    if (!cfg_.tls_enabled()) return {};
+#ifndef WIRESTEAD_TLS_ENABLED
+    return "TLS was configured but this build has WIRESTEAD_ENABLE_TLS=OFF";
+#else
+    namespace ssl = boost::asio::ssl;
+    try {
+      auto ctx = std::make_shared<ssl::context>(ssl::context::tls_server);
+      // Anything below TLS 1.2 is broken in ways nobody should opt into by
+      // accident, so the floor is not configurable.
+      ctx->set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 | ssl::context::no_sslv3 |
+                       ssl::context::no_tlsv1 | ssl::context::no_tlsv1_1 | ssl::context::single_dh_use);
+      ctx->use_certificate_chain_file(cfg_.tls_certificate_file);
+      ctx->use_private_key_file(cfg_.tls_private_key_file, ssl::context::pem);
+      ssl_context_ = std::move(ctx);
+      return {};
+    } catch (const std::exception& e) {
+      return std::string("Failed to load TLS certificate or key: ") + e.what();
+    }
+#endif
+  }
+
+  std::shared_ptr<TcpServerSession> make_session(tcp::socket sock) {
+#ifdef WIRESTEAD_TLS_ENABLED
+    if (ssl_context_) {
+      return std::make_shared<TcpServerSession>(
+          ioc_, std::make_unique<SslTcpSocket>(std::move(sock), ssl_context_), cfg_.backpressure_threshold,
+          cfg_.idle_timeout_ms, cfg_.backpressure_strategy, cfg_.enable_memory_pool, cfg_.read_buffer_size);
+    }
+#endif
+    return std::make_shared<TcpServerSession>(ioc_, std::move(sock), cfg_.backpressure_threshold, cfg_.idle_timeout_ms,
+                                              cfg_.backpressure_strategy, cfg_.enable_memory_pool,
+                                              cfg_.read_buffer_size);
   }
 
   void apply_accepted_socket_options(tcp::socket& sock) {
@@ -322,10 +368,10 @@ struct TcpServer::Impl {
 
       accept_impl->apply_accepted_socket_options(sock);
 
-      auto new_session = std::make_shared<TcpServerSession>(
-          accept_impl->ioc_, std::move(sock), accept_impl->cfg_.backpressure_threshold,
-          accept_impl->cfg_.idle_timeout_ms, accept_impl->cfg_.backpressure_strategy,
-          accept_impl->cfg_.enable_memory_pool, accept_impl->cfg_.read_buffer_size);
+      // The session only talks to TcpSocketInterface, so TLS is a matter of
+      // which implementation it gets wrapped in here. Everything downstream -
+      // reads, writes, backpressure, stats - is identical either way.
+      auto new_session = accept_impl->make_session(std::move(sock));
 
       ClientId client_id = accept_impl->next_client_id_.fetch_add(1);
 
@@ -561,6 +607,18 @@ void TcpServer::start() {
   // what keeps that promise - before absorption they were empty and a restart
   // zeroed the aggregate for free.
   impl->stats_.reset(0);
+
+  // Load the certificate before binding. A server asked for TLS that cannot
+  // provide it must not come up in plaintext instead - that is the failure mode
+  // where everything looks healthy and nothing is encrypted.
+  if (const auto tls_error = impl->init_tls(); !tls_error.empty()) {
+    WIRESTEAD_LOG_ERROR("tcp_server", "start", tls_error);
+    impl->error_info_holder_.record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::CONFIGURATION,
+                                          "start", {}, tls_error, false, 0);
+    impl->state_.set(base::LinkState::Error);
+    impl->notify_state();
+    return;
+  }
 
   if (impl->uses_shared_context_) {
     auto& manager = concurrency::IoContextManager::instance();

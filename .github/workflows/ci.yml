@@ -270,6 +270,53 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  # ── TLS ───────────────────────────────────────────────────────────────────────
+  # WIRESTEAD_ENABLE_TLS is off by default, so without this job the TLS code is
+  # a configuration nobody compiles and nothing would catch it rotting.
+  tls-tests:
+    name: TLS (ubuntu-24.04, gcc)
+    runs-on: ubuntu-24.04
+    needs: [compile]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache ccache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: ccache-${{ runner.os }}-tls-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: ccache-${{ runner.os }}-tls-
+
+      - name: Install dependencies
+        uses: ./.github/actions/apt-install
+        with:
+          packages: "build-essential cmake ccache libssl-dev"
+
+      - name: Install dependencies with vcpkg
+        uses: ./.github/actions/setup-vcpkg
+        with:
+          triplet: x64-linux
+
+      - name: Configure CMake with TLS
+        run: |
+          cmake -S . -B build-tls \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_STANDARD=$CXX_STANDARD \
+            -DWIRESTEAD_BUILD_TESTS=ON \
+            -DWIRESTEAD_ENABLE_TLS=ON \
+            -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE \
+            -DVCPKG_TARGET_TRIPLET=$VCPKG_TARGET_TRIPLET \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build with TLS
+        run: cmake --build build-tls -j $(nproc)
+
+      - name: Run TLS tests
+        run: ctest --test-dir build-tls --output-on-failure --parallel 2 -R "Tls"
+
   # ── INTEGRATION TESTS ─────────────────────────────────────────────────────────
   integration-tests:
     name: Integration Tests (ubuntu-24.04, gcc)
@@ -498,7 +545,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-24.04
-    needs: [compile, unit-tests, windows, integration-tests, integration-tests-arm64, memory-safety-tests, e2e-tests]
+    needs: [compile, unit-tests, windows, integration-tests, integration-tests-arm64, memory-safety-tests, e2e-tests, tls-tests]
     if: always()
 
     steps:
@@ -511,6 +558,7 @@ jobs:
           echo "| Unit Tests | ${{ needs.unit-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Windows | ${{ needs.windows.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Integration Tests | ${{ needs.integration-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| TLS | ${{ needs.tls-tests.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Integration Tests ARM64 | ${{ needs.integration-tests-arm64.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Memory Safety Tests | ${{ needs.memory-safety-tests.result == 'success' && '✅' || needs.memory-safety-tests.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| E2E Tests | ${{ needs.e2e-tests.result == 'success' && '✅' || needs.e2e-tests.result == 'skipped' && '⏭️' || '❌' }} |" >> $GITHUB_STEP_SUMMARY

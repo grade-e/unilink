@@ -211,6 +211,16 @@ class WIRESTEAD_API ServerInterface {
   virtual bool try_send_to_line(ClientId client_id, std::string_view line) = 0;
 
   // Event handlers
+
+  /**
+   * @brief Fires when a connection is accepted.
+   *
+   * Accepted, not usable. On a TLS server this runs before the handshake, so a
+   * client that fails it still produces one on_connect - followed by an
+   * on_disconnect, with no on_data in between. The two callbacks stay paired
+   * either way, so connection bookkeeping keyed on them does not leak; treat
+   * the first byte of data, not this callback, as proof the peer got through.
+   */
   virtual ServerInterface& on_connect(ConnectionHandler handler) = 0;
   virtual ServerInterface& on_disconnect(ConnectionHandler handler) = 0;
   virtual ServerInterface& on_data(MessageHandler handler) = 0;

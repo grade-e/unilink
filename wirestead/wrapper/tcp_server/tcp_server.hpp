@@ -117,6 +117,14 @@ class WIRESTEAD_API TcpServer : public ServerInterface {
   TcpServer& backpressure_strategy(base::constants::BackpressureStrategy strategy);
   TcpServer& tcp_no_delay(bool enable = true);
   TcpServer& keep_alive(bool enable = true);
+  /**
+   * @brief Serve TLS using this certificate chain and private key (PEM).
+   *
+   * Must be set before start(). Requires a build with WIRESTEAD_ENABLE_TLS;
+   * without it start() fails rather than quietly serving plaintext.
+   */
+  TcpServer& tls(const std::string& certificate_file, const std::string& private_key_file);
+
   TcpServer& send_buffer_size(size_t bytes);
   TcpServer& receive_buffer_size(size_t bytes);
 

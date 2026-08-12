@@ -77,6 +77,8 @@ std::unique_ptr<wrapper::TcpServer> TcpServerBuilder::build() {
   if (idle_timeout_set_) server->idle_timeout(idle_timeout_);
   if (tcp_no_delay_set_) server->tcp_no_delay(tcp_no_delay_);
   if (keep_alive_set_) server->keep_alive(keep_alive_);
+  if (!tls_certificate_file_.empty() || !tls_private_key_file_.empty())
+    server->tls(tls_certificate_file_, tls_private_key_file_);
   if (send_buffer_size_set_) server->send_buffer_size(send_buffer_size_);
   if (receive_buffer_size_set_) server->receive_buffer_size(receive_buffer_size_);
   if (read_buffer_size_set_) server->read_buffer_size(read_buffer_size_);
@@ -155,6 +157,12 @@ TcpServerBuilder& TcpServerBuilder::tcp_no_delay(bool enable) {
 TcpServerBuilder& TcpServerBuilder::keep_alive(bool enable) {
   keep_alive_ = enable;
   keep_alive_set_ = true;
+  return *this;
+}
+
+TcpServerBuilder& TcpServerBuilder::tls(const std::string& certificate_file, const std::string& private_key_file) {
+  tls_certificate_file_ = certificate_file;
+  tls_private_key_file_ = private_key_file;
   return *this;
 }
 

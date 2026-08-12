@@ -284,6 +284,20 @@ if(WIRESTEAD_LINK_BOOST_SYSTEM)
   endif()
 endif()
 
+# Boost.Asio's SSL support is header-only but needs OpenSSL linked. Only looked
+# for when TLS is enabled, so a default build has no new dependency at all.
+if(WIRESTEAD_ENABLE_TLS)
+  find_package(OpenSSL REQUIRED)
+  target_link_libraries(
+    wirestead_dependencies INTERFACE OpenSSL::SSL OpenSSL::Crypto
+  )
+  target_compile_definitions(
+    wirestead_dependencies INTERFACE WIRESTEAD_TLS_ENABLED=1
+  )
+  list(APPEND WIRESTEAD_PKGCONFIG_REQUIRES_PRIVATE "openssl")
+  message(STATUS "TLS enabled, using OpenSSL ${OPENSSL_VERSION}")
+endif()
+
 if(WIRESTEAD_BOOST_INCLUDE_DIR)
   target_include_directories(
     wirestead_dependencies SYSTEM
