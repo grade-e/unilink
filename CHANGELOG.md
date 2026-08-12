@@ -23,6 +23,9 @@ and ABI policy.
   leaves plain sockets behaving exactly as before. Reads, writes, backpressure
   and stats are the same code either way.
 
+  Setting only one of the certificate and key fails `start()` rather than
+  falling back to plaintext.
+
   Closing a TLS connection sends `close_notify` without waiting for the peer's
   reply: the bidirectional exchange blocks until the peer answers, and a peer
   that simply stops reading held `stop()` for 8 seconds in testing. `on_connect`
