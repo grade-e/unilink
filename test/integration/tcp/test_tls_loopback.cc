@@ -140,6 +140,79 @@ TEST(TcpTlsLoopbackTest, ServesTlsAndRejectsPlaintextClients) {
   server->stop();
 }
 
+// The point of client TLS: both ends are wirestead, and the traffic between
+// them is encrypted. Until this existed a wirestead client could only reach a
+// wirestead TLS server by not being a wirestead client.
+TEST(TcpTlsLoopbackTest, WiresteadClientTalksToWiresteadTlsServer) {
+  SelfSignedCert certs;
+  if (!certs.ok()) {
+    GTEST_SKIP() << "openssl CLI unavailable, cannot generate a test certificate";
+  }
+
+  const uint16_t port = TestUtils::getAvailableTestPort();
+
+  auto server = std::make_shared<wirestead::wrapper::TcpServer>(port);
+  server->tls(certs.cert().string(), certs.key().string());
+  server->on_data([&](const wirestead::MessageContext& ctx) { server->broadcast("pong-tls"); });
+  server->on_error([](const wirestead::ErrorContext&) {});
+  ASSERT_TRUE(server->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->listening(); }, 5000));
+
+  // The certificate is issued to "localhost", so the client has to connect by
+  // that name for host name verification to pass.
+  std::atomic<int> replies{0};
+  std::string received;
+  auto client = std::make_shared<wirestead::wrapper::TcpClient>("localhost", port);
+  client->tls(certs.cert().string());
+  client->on_data([&](const wirestead::MessageContext& ctx) {
+    received.assign(ctx.data());
+    replies.fetch_add(1);
+  });
+  client->on_error([](const wirestead::ErrorContext&) {});
+
+  ASSERT_TRUE(client->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return client->connected(); }, 10000));
+
+  ASSERT_TRUE(client->send("ping-tls"));
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return replies.load() > 0; }, 10000));
+  EXPECT_EQ(received, "pong-tls");
+
+  client->stop();
+  server->stop();
+}
+
+// Verification is the whole point of the client half. Trusting nothing but the
+// system store, a self-signed server must fail rather than connect.
+TEST(TcpTlsLoopbackTest, ClientRejectsAnUntrustedServerCertificate) {
+  SelfSignedCert certs;
+  if (!certs.ok()) {
+    GTEST_SKIP() << "openssl CLI unavailable, cannot generate a test certificate";
+  }
+
+  const uint16_t port = TestUtils::getAvailableTestPort();
+
+  auto server = std::make_shared<wirestead::wrapper::TcpServer>(port);
+  server->tls(certs.cert().string(), certs.key().string());
+  std::atomic<int> served{0};
+  server->on_data([&](const wirestead::MessageContext&) { served.fetch_add(1); });
+  server->on_error([](const wirestead::ErrorContext&) {});
+  ASSERT_TRUE(server->start().get());
+  ASSERT_TRUE(TestUtils::waitForCondition([&] { return server->listening(); }, 5000));
+
+  auto client = std::make_shared<wirestead::wrapper::TcpClient>("localhost", port);
+  client->tls();  // system trust store only - our self-signed cert is not in it
+  client->on_data([](const wirestead::MessageContext&) {});
+  client->on_error([](const wirestead::ErrorContext&) {});
+  client->start();
+
+  // Never reports itself connected, and nothing it sends reaches the server.
+  EXPECT_FALSE(TestUtils::waitForCondition([&] { return client->connected(); }, 3000));
+  EXPECT_EQ(served.load(), 0);
+
+  client->stop();
+  server->stop();
+}
+
 // Half a TLS config used to leave tls_enabled() false, which meant the server
 // came up in plaintext without a word - an empty env var or a typo away from
 // serving unencrypted traffic to a caller who asked for TLS.

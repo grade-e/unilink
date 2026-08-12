@@ -82,6 +82,8 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
   std::chrono::milliseconds retry_interval_{base::constants::DEFAULT_RETRY_INTERVAL_MS};
   int max_retries_ = base::constants::DEFAULT_MAX_RETRIES;
   std::chrono::milliseconds connection_timeout_{base::constants::DEFAULT_CONNECTION_TIMEOUT_MS};
+  bool tls_enabled_{false};
+  std::string tls_ca_file_;
   std::chrono::milliseconds idle_timeout_{base::constants::DEFAULT_IDLE_TIMEOUT_MS};
   IdleTimeoutAction idle_timeout_action_{IdleTimeoutAction::Reconnect};
   size_t backpressure_threshold_{base::constants::DEFAULT_BACKPRESSURE_THRESHOLD};
@@ -200,6 +202,8 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       config.retry_interval_ms = static_cast<unsigned int>(retry_interval_.count());
       config.max_retries = max_retries_;
       config.connection_timeout_ms = static_cast<unsigned>(connection_timeout_.count());
+      config.tls_enabled = tls_enabled_;
+      config.tls_ca_file = tls_ca_file_;
       config.idle_timeout_ms = static_cast<unsigned>(idle_timeout_.count());
       config.idle_timeout_action = idle_timeout_action_;
       config.backpressure_threshold = backpressure_threshold_;
@@ -708,6 +712,13 @@ TcpClient& TcpClient::max_retries(int m) {
   }
   return *this;
 }
+TcpClient& TcpClient::tls(const std::string& ca_file) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->tls_enabled_ = true;
+  impl_->tls_ca_file_ = ca_file;
+  return *this;
+}
+
 TcpClient& TcpClient::connection_timeout(std::chrono::milliseconds t) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->connection_timeout_ = t;

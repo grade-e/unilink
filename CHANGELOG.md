@@ -10,6 +10,25 @@ and ABI policy.
 
 ### Added
 
+- Optional TLS for the TCP **client**, behind the same `-DWIRESTEAD_ENABLE_TLS=ON`.
+  Two wirestead services can now talk to each other encrypted; before this a
+  wirestead client could only reach a wirestead TLS server by not being a
+  wirestead client.
+
+  ```cpp
+  auto client = wirestead::tcp_client("example.com", 9000).tls().build();
+  client->tls("/path/to/ca.pem");   // or trust a private CA
+  ```
+
+  Verification is not optional: the chain, the host name and SNI are all checked
+  against the host passed to the constructor. No argument uses the system trust
+  store. `connected()` only becomes true after the handshake, so a peer that
+  fails verification never reports itself connected.
+
+  No extraction refactor was needed. `ssl::stream` can borrow its next layer by
+  reference, so the client keeps owning its socket and connect, socket options,
+  cancel and close are untouched - only reads, writes and shutdown branch.
+
 - Optional TLS for the TCP server, behind `-DWIRESTEAD_ENABLE_TLS=ON`. A default
   build is unchanged and has no OpenSSL dependency.
 
