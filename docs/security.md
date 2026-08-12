@@ -24,7 +24,9 @@ auto server = wirestead::tcp_server(9000)
 ```
 
 Both files are PEM. The certificate is a chain file, so intermediates belong in
-it. TLS 1.2 is the floor and is not configurable.
+it. TLS 1.2 is the floor and is not configurable. Setting only one of the two
+fails `start()` rather than falling back to plaintext - an empty environment
+variable should not silently turn encryption off.
 
 Leaving `tls()` unset serves plaintext, which is the default. Setting it in a
 build without `WIRESTEAD_ENABLE_TLS` makes `start()` **fail** rather than serve

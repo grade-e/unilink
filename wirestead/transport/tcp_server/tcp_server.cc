@@ -169,6 +169,14 @@ struct TcpServer::Impl {
   // a certificate problem surfaces as a start failure with a message rather
   // than as connections that mysteriously drop at handshake.
   std::string init_tls() {
+    // Half a TLS config is a request for TLS, not a request for plaintext. An
+    // empty environment variable or a typo would otherwise leave tls_enabled()
+    // false and bring the server up unencrypted without saying anything, which
+    // is the one outcome this whole path exists to prevent.
+    if (!cfg_.tls_certificate_file.empty() != !cfg_.tls_private_key_file.empty()) {
+      return cfg_.tls_certificate_file.empty() ? "TLS needs a certificate as well as a private key"
+                                               : "TLS needs a private key as well as a certificate";
+    }
     if (!cfg_.tls_enabled()) return {};
 #ifndef WIRESTEAD_TLS_ENABLED
     return "TLS was configured but this build has WIRESTEAD_ENABLE_TLS=OFF";

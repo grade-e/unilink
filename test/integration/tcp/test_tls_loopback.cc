@@ -25,6 +25,8 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "test_utils.hpp"
 #include "wirestead/wirestead.hpp"
@@ -136,6 +138,27 @@ TEST(TcpTlsLoopbackTest, ServesTlsAndRejectsPlaintextClients) {
   EXPECT_EQ(messages.load(), 1) << "a plaintext client reached the data callback";
 
   server->stop();
+}
+
+// Half a TLS config used to leave tls_enabled() false, which meant the server
+// came up in plaintext without a word - an empty env var or a typo away from
+// serving unencrypted traffic to a caller who asked for TLS.
+TEST(TcpTlsLoopbackTest, StartFailsWhenOnlyHalfTheTlsConfigIsSet) {
+  SelfSignedCert certs;
+  if (!certs.ok()) {
+    GTEST_SKIP() << "openssl CLI unavailable, cannot generate a test certificate";
+  }
+
+  for (const auto& [cert, key] :
+       std::vector<std::pair<std::string, std::string>>{{certs.cert().string(), ""}, {"", certs.key().string()}}) {
+    auto server = std::make_shared<wirestead::wrapper::TcpServer>(TestUtils::getAvailableTestPort());
+    server->tls(cert, key);
+    server->on_error([](const wirestead::ErrorContext&) {});
+
+    EXPECT_FALSE(server->start().get()) << "half a TLS config started anyway";
+    EXPECT_FALSE(server->listening());
+    server->stop();
+  }
 }
 
 TEST(TcpTlsLoopbackTest, StartFailsWhenTheCertificateCannotBeLoaded) {
