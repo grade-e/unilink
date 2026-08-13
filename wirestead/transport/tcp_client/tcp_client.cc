@@ -95,12 +95,16 @@ struct TcpClient::Impl {
   // session cannot outlive the socket it negotiated on.
   std::shared_ptr<boost::asio::ssl::context> ssl_context_;
   std::optional<boost::asio::ssl::stream<tcp::socket&>> tls_;
+  // Whether IO should currently be routed through tls_, tracked separately
+  // from tls_.has_value() because the stream now outlives the connection - see
+  // close_socket(). Strand-confined, like the stream itself.
+  bool tls_engaged_ = false;
 #endif
 
   // True when this connection is encrypted. Reads to it happen on the strand.
   bool tls_active() const {
 #ifdef WIRESTEAD_TLS_ENABLED
-    return tls_.has_value();
+    return tls_engaged_;
 #else
     return false;
 #endif
@@ -838,6 +842,7 @@ void TcpClient::Impl::handshake_then(std::shared_ptr<TcpClient> self, uint64_t s
         ssl_context_ = std::move(ctx);
       }
       tls_.emplace(socket_, *ssl_context_);
+      tls_engaged_ = true;
       tls_->set_verify_callback(ssl::host_name_verification(cfg_.host));
       // SNI, and the name the certificate is checked against.
       ::SSL_set_tlsext_host_name(tls_->native_handle(), cfg_.host.c_str());
@@ -847,6 +852,7 @@ void TcpClient::Impl::handshake_then(std::shared_ptr<TcpClient> self, uint64_t s
       record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::CONNECTION, "handshake",
                    boost::asio::error::invalid_argument, msg, false, 0);
       tls_.reset();
+      tls_engaged_ = false;
       handle_close(self, seq, boost::asio::error::invalid_argument);
       return;
     }
@@ -858,7 +864,11 @@ void TcpClient::Impl::handshake_then(std::shared_ptr<TcpClient> self, uint64_t s
                               WIRESTEAD_LOG_ERROR("tcp_client", "handshake", "TLS handshake failed: " + ec.message());
                               record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::CONNECTION,
                                            "handshake", ec, "TLS handshake failed: " + ec.message(), false, 0);
-                              tls_.reset();
+                              // Not tls_.reset(): this runs from inside the
+                              // stream's own completion handler, and
+                              // close_socket() below explains why the stream
+                              // has to outlive its operations.
+                              tls_engaged_ = false;
                               handle_close(self, seq, ec);
                               return;
                             }
@@ -1009,7 +1019,7 @@ void TcpClient::Impl::start_read(std::shared_ptr<TcpClient> self, uint64_t seq) 
     self->impl_->start_read(self, seq);
   };
 #ifdef WIRESTEAD_TLS_ENABLED
-  if (tls_) {
+  if (tls_active()) {
     tls_->async_read_some(net::buffer(rx_.data(), rx_.size()), std::move(on_read));
     return;
   }
@@ -1081,7 +1091,7 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
   };
 
 #ifdef WIRESTEAD_TLS_ENABLED
-  if (tls_) {
+  if (tls_active()) {
     net::async_write(*tls_, current_write_views_, on_write);
     return;
   }
@@ -1165,7 +1175,18 @@ void TcpClient::Impl::close_socket() {
   // One SSL_shutdown writes close_notify and returns; a second would wait for
   // the peer's, which is the block measured at 8 s on the server side.
   if (tls_) ::SSL_shutdown(tls_->native_handle());
-  tls_.reset();
+  // Deliberately no tls_.reset() here. socket_.cancel()/close() do not retract
+  // a boost::asio::ssl::detail::io_op continuation that is already queued on
+  // the strand: the strand runs it afterwards, and it calls back into the
+  // engine's BIO. Destroying the stream at this point therefore left that
+  // continuation dereferencing freed memory - a SIGSEGV inside BIO_ctrl,
+  // reproducible under parallel load and seen intermittently in CI.
+  //
+  // The stream is instead destroyed by the next tls_.emplace(), which runs on
+  // the strand after any pending continuation, or by ~Impl once the io thread
+  // has been joined. It cannot be moved out to a holder either - a pending
+  // operation holds the stream's original address.
+  tls_engaged_ = false;
 #endif
   socket_.shutdown(tcp::socket::shutdown_both, ec);
   socket_.close(ec);

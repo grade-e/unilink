@@ -192,6 +192,20 @@ and ABI policy.
 
 ### Fixed
 
+- The TLS client no longer segfaults when a connection is torn down during a
+  handshake. `close_socket()` destroyed the `ssl::stream` while an
+  `asio::ssl::detail::io_op` continuation was still queued on the strand -
+  `socket_.cancel()`/`close()` do not retract one - so that continuation then
+  called into a freed BIO. Reproducible under parallel load and seen
+  intermittently in CI as `TcpTlsLoopbackTest.ClientRejectsAnUntrustedServerCertificate`
+  crashing inside `BIO_ctrl`.
+
+  The stream now outlives the connection and is destroyed by the next
+  `emplace()` on the strand, or with the transport once the io thread is
+  joined. It cannot simply be moved aside instead: a pending operation holds
+  the stream's original address. Whether IO is routed through TLS is tracked
+  by its own flag rather than by `tls_.has_value()`.
+
 - Every transport instance and every accepted server session eagerly allocated
   roughly 1 MiB of memory-pool buffers at construction. The six call sites
   passed `MemoryPool{50, 200}`, written while `initial_pool_size` was discarded
