@@ -16,7 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <string>
+#include <thread>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -166,6 +168,41 @@ TEST(MessageContextTest, EmptyPayloadIsSafeForBothConstructors) {
   EXPECT_TRUE(owned_ctx.data().empty());
   EXPECT_TRUE(owned_ctx.data_as_string().empty());
   EXPECT_TRUE(owned_ctx.data_as_vector().empty());
+}
+
+// received_at() is stamped by a default member initializer, so the copy
+// operations are the one place it can go wrong: a copy that let the
+// initializer run again would report the time of the copy instead of the time
+// of arrival, and a batch queue copies on every reallocation. Sleep long
+// enough that a re-stamp cannot pass as clock granularity.
+TEST(MessageContextTest, CopiesAndMovesKeepTheArrivalTime) {
+  auto payload = make_payload("stamped");
+  const MessageContext original(1, memory::SafeDataBuffer(memory::ConstByteSpan(payload.data(), payload.size())));
+  const auto arrived = original.received_at();
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+
+  MessageContext copy_constructed = original;
+  EXPECT_EQ(copy_constructed.received_at(), arrived);
+
+  MessageContext copy_assigned(0, memory::ConstByteSpan{});
+  copy_assigned = original;
+  EXPECT_EQ(copy_assigned.received_at(), arrived);
+
+  const MessageContext moved = std::move(copy_constructed);
+  EXPECT_EQ(moved.received_at(), arrived);
+}
+
+// A borrowed context is the single-shot dispatch path and gets stamped the
+// same way an owning one does.
+TEST(MessageContextTest, ArrivalTimeIsStampedAtConstruction) {
+  const auto before = std::chrono::steady_clock::now();
+  auto payload = make_payload("now");
+  const MessageContext view_ctx(0, memory::ConstByteSpan(payload.data(), payload.size()));
+  const auto after = std::chrono::steady_clock::now();
+
+  EXPECT_GE(view_ctx.received_at(), before);
+  EXPECT_LE(view_ctx.received_at(), after);
 }
 
 TEST(MessageContextTest, ClientInfoIsCarriedByBothConstructors) {

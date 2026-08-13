@@ -42,6 +42,32 @@ client->on_data([&](const wirestead::MessageContext& ctx) {
 Only the view returned by `data()` is callback-scoped. Contexts delivered to
 the batch handlers (`on_data_batch`/`on_message_batch`) always own their data.
 
+## Arrival time
+
+`MessageContext::received_at()` is a `std::chrono::steady_clock::time_point`
+stamped where the context was built, which on every receive path is the moment
+the bytes came off the transport. Prefer it over reading a clock inside the
+callback, which times the callback rather than the arrival:
+
+- a batch handler receives one stamp per context, each from when that chunk
+  arrived — reading the clock in the handler stamps the whole batch with the
+  flush time instead;
+- a framer that finds several messages in one read gives each of them that
+  read's arrival time, rather than timing how far the parse got.
+
+The clock is steady rather than system so the value survives an NTP step. To
+put it on a wall clock, subtract the age instead of converting the epoch:
+
+```cpp
+client->on_message([&](const wirestead::MessageContext& ctx) {
+    const auto age = std::chrono::steady_clock::now() - ctx.received_at();
+    msg.header.stamp = node->now() - rclcpp::Duration(age);
+});
+```
+
+This is transport arrival, not a kernel or hardware timestamp: it includes
+whatever the kernel spent before the read completed.
+
 ## Do not call a blocking send from within a callback
 
 `on_data`/`on_message` (and every other) callback runs on the channel's own

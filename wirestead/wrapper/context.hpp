@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -63,7 +64,10 @@ class MessageContext {
   // borrowed bytes stop being valid. Doing this in the copy costs the hot path
   // nothing: dispatch passes the context by reference and never copies it.
   MessageContext(const MessageContext& other)
-      : client_id_(other.client_id_), owned_(other.cloned_payload()), client_info_(other.client_info_) {}
+      : client_id_(other.client_id_),
+        owned_(other.cloned_payload()),
+        client_info_(other.client_info_),
+        received_at_(other.received_at_) {}
 
   MessageContext& operator=(const MessageContext& other) {
     if (this != &other) {
@@ -71,6 +75,7 @@ class MessageContext {
       owned_ = other.cloned_payload();
       view_ = {};
       client_info_ = other.client_info_;
+      received_at_ = other.received_at_;
     }
     return *this;
   }
@@ -127,6 +132,31 @@ class MessageContext {
   /** @brief Get the client information (e.g., endpoint address) */
   const std::string& client_info() const { return client_info_; }
 
+  /**
+   * @brief When this payload arrived, on the steady clock.
+   *
+   * Stamped where the context is constructed, which on every receive path is
+   * the moment the bytes came off the transport — not the moment the callback
+   * runs. The difference is what makes it worth having:
+   *
+   * - a batch callback delivers contexts stamped when each chunk arrived, not
+   *   when the batch flushed, so a whole batch does not collapse onto one time;
+   * - a framer that finds several messages in one read gives each of them that
+   *   read's arrival time, where a clock read inside the callback would be
+   *   timing the parse instead.
+   *
+   * Steady, not system: stamping is exactly where a clock step would otherwise
+   * corrupt the data, and a difference between two steady readings survives
+   * one. To place it on a wall clock — a ROS header stamp, say — subtract the
+   * age rather than converting the epoch:
+   *
+   * ```cpp
+   * const auto age = std::chrono::steady_clock::now() - ctx.received_at();
+   * msg.header.stamp = node->now() - rclcpp::Duration(age);
+   * ```
+   */
+  std::chrono::steady_clock::time_point received_at() const { return received_at_; }
+
  private:
   const uint8_t* payload_data() const noexcept { return owned_ ? owned_->data() : view_.data(); }
   size_t payload_size() const noexcept { return owned_ ? owned_->size() : view_.size(); }
@@ -147,6 +177,13 @@ class MessageContext {
   mutable std::optional<memory::SafeDataBuffer> owned_;
   memory::ConstByteSpan view_;
   std::string client_info_;
+  // Default-initialized rather than passed in, so every construction site
+  // stamps arrival without threading a parameter through seven wrappers. The
+  // copy operations below must carry it across explicitly - a copy that let
+  // this initializer run again would silently re-stamp the payload with the
+  // time it was copied, which is precisely the error this field exists to
+  // prevent.
+  std::chrono::steady_clock::time_point received_at_{std::chrono::steady_clock::now()};
 };
 
 /**
