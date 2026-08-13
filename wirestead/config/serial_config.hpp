@@ -51,6 +51,23 @@ struct SerialConfig {
   bool low_latency = true;
 
   bool reopen_on_error = true;  // Attempt to reopen on device disconnection/error
+
+  // Reopen the port when no data has been *received* for this long. 0 disables
+  // it, which is the default.
+  //
+  // The failure this catches is a device that stops streaming without ever
+  // reporting an error - a wedged USB adapter, a sensor that stopped talking -
+  // where every other mechanism here sees a perfectly healthy open port and
+  // waits forever.
+  //
+  // Receive-only on purpose, unlike the TCP idle timeout, which any traffic in
+  // either direction resets. A driver polling a mute device writes on schedule
+  // and would keep a bidirectional timer alive forever, which is exactly the
+  // case worth catching.
+  //
+  // Expiry runs the same path as a read error, so reopen_on_error decides
+  // whether the port is reopened or the link goes to Error.
+  unsigned rx_idle_timeout_ms = 0;
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
   bool enable_memory_pool = true;
@@ -75,6 +92,8 @@ struct SerialConfig {
            retry_interval_ms <= base::constants::MAX_RETRY_INTERVAL_MS &&
            backpressure_threshold >= base::constants::MIN_BACKPRESSURE_THRESHOLD &&
            backpressure_threshold <= base::constants::MAX_BACKPRESSURE_THRESHOLD &&
+           (rx_idle_timeout_ms == 0 || (rx_idle_timeout_ms >= base::constants::MIN_IDLE_TIMEOUT_MS &&
+                                        rx_idle_timeout_ms <= base::constants::MAX_IDLE_TIMEOUT_MS)) &&
            (max_retries == -1 || (max_retries >= 0 && max_retries <= base::constants::MAX_RETRIES_LIMIT));
   }
 
@@ -112,6 +131,10 @@ struct SerialConfig {
       backpressure_threshold = base::constants::MIN_BACKPRESSURE_THRESHOLD;
     } else if (backpressure_threshold > base::constants::MAX_BACKPRESSURE_THRESHOLD) {
       backpressure_threshold = base::constants::MAX_BACKPRESSURE_THRESHOLD;
+    }
+
+    if (rx_idle_timeout_ms != 0 && rx_idle_timeout_ms > base::constants::MAX_IDLE_TIMEOUT_MS) {
+      rx_idle_timeout_ms = base::constants::MAX_IDLE_TIMEOUT_MS;
     }
 
     if (max_retries != -1 && max_retries > base::constants::MAX_RETRIES_LIMIT) {

@@ -224,6 +224,83 @@ TEST(TransportSerialTest, UnsupportedLowLatencyStillConnects) {
   serial->stop();
 }
 
+// A device that goes quiet without erroring leaves a healthy open port and a
+// read that never completes, so nothing else in the transport notices. The
+// watchdog has to, and it has to survive its own teardown: closing the port
+// aborts the pending read, and that aborted read must not cancel the reopen it
+// just triggered.
+TEST(TransportSerialTest, RxIdleTimeoutReopensASilentPort) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rx_idle_timeout_ms = 30;
+  cfg.retry_interval_ms = 20;
+  cfg.reopen_on_error = true;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  // Reaching Connected more than once is the reopen: the port is only opened
+  // by the initial start and by a scheduled retry.
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(150ms);
+
+  EXPECT_GE(connects.load(), 2) << "the silent port was closed but never reopened";
+  serial->stop();
+}
+
+TEST(TransportSerialTest, RxIdleTimeoutIsOffByDefault) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.retry_interval_ms = 20;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(150ms);
+
+  EXPECT_EQ(connects.load(), 1) << "a silent port was torn down with the watchdog disabled";
+  serial->stop();
+}
+
+// Arriving data has to push the deadline back, otherwise the watchdog tears
+// down a perfectly healthy link on a fixed timer.
+TEST(TransportSerialTest, ReceivedDataRearmsTheRxIdleTimeout) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rx_idle_timeout_ms = 30;
+  cfg.retry_interval_ms = 20;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(5ms);  // open, configure, arm the watchdog
+
+  for (int i = 0; i < 10; ++i) {
+    port_raw->emit_read(1);
+    ioc.run_for(10ms);
+  }
+
+  EXPECT_EQ(connects.load(), 1) << "a stream arriving every 10ms tripped a 30ms watchdog";
+  serial->stop();
+}
+
 // operation_aborted after stop must not trigger reconnect/reopen
 TEST(TransportSerialTest, StopPreventsReopenAfterOperationAborted) {
   boost::asio::io_context ioc;

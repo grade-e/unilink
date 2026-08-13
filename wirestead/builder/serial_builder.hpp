@@ -61,6 +61,9 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   // SerialConfig::low_latency.
   SerialBuilder& low_latency(bool enable = true);
   SerialBuilder& reopen_on_error(bool enable = true);
+  // Reopen the port when no data has been received for this long. Off by
+  // default; see SerialConfig::rx_idle_timeout_ms.
+  SerialBuilder& rx_idle_timeout(std::chrono::milliseconds timeout);
   SerialBuilder& retry_interval(std::chrono::milliseconds interval);
   SerialBuilder& independent_context(bool use_independent = true);
   // Opt into the shared IoContextManager singleton instead of the default
@@ -92,6 +95,8 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   bool read_chunk_set_{false};
   bool low_latency_{true};
   bool low_latency_set_{false};
+  std::chrono::milliseconds rx_idle_timeout_{0};
+  bool rx_idle_timeout_set_{false};
 };
 
 using SerialBuilderDefault = SerialBuilder;

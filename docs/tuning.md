@@ -59,6 +59,30 @@ arrival time does not matter. Unlike everything else on this page, this one is
 worth setting without a measurement first: nothing else in the library recovers
 16 ms.
 
+## Serial receive watchdog
+
+A device that stops streaming without erroring leaves a healthy open port and a
+read that never completes, so nothing else in the transport notices — the
+classic wedged USB adapter or sensor that just goes quiet.
+`rx_idle_timeout` closes and reopens the port after that long without received
+data. Off by default.
+
+```cpp
+auto port = wirestead::serial("/dev/ttyUSB0", 115200)
+                .rx_idle_timeout(std::chrono::milliseconds(500))
+                .build();
+```
+
+Set it above the device's slowest expected interval, with margin — expiry tears
+the link down, so a value below the real gap between messages produces a reopen
+loop rather than a recovery.
+
+Receives only, deliberately unlike the TCP idle timeout, which any traffic in
+either direction resets: a driver polling a mute device writes on schedule and
+would hold a bidirectional timer open forever. Expiry runs the same path as a
+read error, so `reopen_on_error` decides whether the port is reopened or the
+link goes to `Error`.
+
 ## Memory pool prefill
 
 `MemoryPool(initial_pool_size, max_pool_size)` pre-allocates

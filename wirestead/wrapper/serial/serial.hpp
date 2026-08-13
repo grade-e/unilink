@@ -114,6 +114,10 @@ class WIRESTEAD_API Serial : public ChannelInterface {
   // SerialConfig::low_latency for what it does and does not cover.
   Serial& low_latency(bool enable = true);
   Serial& reopen_on_error(bool enable);
+  // Reopen the port when no data has been received for this long. Off by
+  // default; see SerialConfig::rx_idle_timeout_ms for why it watches receives
+  // only.
+  Serial& rx_idle_timeout(std::chrono::milliseconds timeout);
   Serial& retry_interval(std::chrono::milliseconds interval);
   Serial& backpressure_threshold(size_t threshold);
   Serial& backpressure_strategy(base::constants::BackpressureStrategy strategy);

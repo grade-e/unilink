@@ -29,6 +29,22 @@ and ABI policy.
   reference, so the client keeps owning its socket and connect, socket options,
   cancel and close are untouched - only reads, writes and shutdown branch.
 
+- Serial `rx_idle_timeout`, off by default, reopening the port after that long
+  with no data received.
+
+  ```cpp
+  auto port = wirestead::serial("/dev/ttyUSB0", 115200)
+                  .rx_idle_timeout(std::chrono::milliseconds(500))
+                  .build();
+  ```
+
+  A device that goes quiet without erroring leaves a healthy open port and a
+  read that never completes, which nothing else in the transport notices.
+  Receives only, unlike the TCP idle timeout that any traffic resets - a driver
+  polling a mute device would otherwise keep a bidirectional timer alive
+  forever. Expiry takes the same path as a read error, so `reopen_on_error`
+  decides between reopening and `Error`.
+
 - Serial `low_latency`, on by default, asking the driver to stop batching
   received bytes behind its own timer (`ASYNC_LOW_LATENCY` on Linux).
 
