@@ -42,34 +42,36 @@ function(wirestead_add_integration_gtest target source_path labels timeout)
   )
 endfunction()
 
-foreach(
-  test_file
-  test_integration.cc
-  test_simple_server.cc
-  test_client_limit_integration.cc
-  test_multithread_backpressure.cc
-  test_stop_from_callback.cc
-  test_start_stop_stress.cc
-  test_stop_contract.cc
-  test_dos_protection.cc
-  test_tcp_server_chaos.cc
-  test_tcp_flood.cc
-  test_tcp_abort.cc
-  test_tcp_cancel.cc
-  test_tcp_nodelay_default.cc
-  test_read_buffer_size.cc
-  test_gather_write.cc
-  test_receive_allocations.cc
-  test_accept_allocations.cc
+set(WIRESTEAD_TCP_INTEGRATION_TESTS
+    test_integration.cc
+    test_simple_server.cc
+    test_client_limit_integration.cc
+    test_multithread_backpressure.cc
+    test_stop_from_callback.cc
+    test_start_stop_stress.cc
+    test_stop_contract.cc
+    test_dos_protection.cc
+    test_tcp_server_chaos.cc
+    test_tcp_flood.cc
+    test_tcp_abort.cc
+    test_tcp_cancel.cc
+    test_tcp_nodelay_default.cc
+    test_read_buffer_size.cc
+    test_gather_write.cc
+    test_receive_allocations.cc
+    test_accept_allocations.cc
 )
 
-# test_receive_allocations replaces the global operator new/delete to count
-# allocations. ThreadSanitizer defines those itself in libclang_rt.tsan_cxx, so
-# linking the two together fails outright. Excluding the test loses nothing
-# under TSAN: counting allocations while a sanitizer owns allocation measures
-# the sanitizer, not the receive path.
+# These tests replace the global operator new/delete to count allocations.
+# ThreadSanitizer defines those itself in libclang_rt.tsan_cxx, so linking the
+# two together fails outright. Excluding them loses nothing under TSAN: counting
+# allocations while a sanitizer owns allocation measures the sanitizer, not the
+# path under test. Any future test that replaces global operator new belongs in
+# this list too.
 if(WIRESTEAD_ENABLE_TSAN)
-  list(REMOVE_ITEM WIRESTEAD_TCP_INTEGRATION_TESTS test_receive_allocations.cc)
+  list(REMOVE_ITEM WIRESTEAD_TCP_INTEGRATION_TESTS test_receive_allocations.cc
+       test_accept_allocations.cc
+  )
 endif()
 
 # Only meaningful in a build that has TLS compiled in.
