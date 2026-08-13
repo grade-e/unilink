@@ -183,6 +183,12 @@ TEST(TransportSerialTest, LowLatencyIsRequestedByDefault) {
   EXPECT_EQ(port_raw->low_latency_requests(), 1);
   EXPECT_TRUE(connected.load());
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 TEST(TransportSerialTest, LowLatencyDisabledLeavesTheDriverAlone) {
@@ -198,6 +204,12 @@ TEST(TransportSerialTest, LowLatencyDisabledLeavesTheDriverAlone) {
 
   EXPECT_EQ(port_raw->low_latency_requests(), 0);
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 TEST(TransportSerialTest, UnsupportedLowLatencyStillConnects) {
@@ -222,6 +234,12 @@ TEST(TransportSerialTest, UnsupportedLowLatencyStillConnects) {
   EXPECT_TRUE(connected.load());
   EXPECT_FALSE(errored.load());
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 // A device that goes quiet without erroring leaves a healthy open port and a
@@ -251,6 +269,12 @@ TEST(TransportSerialTest, RxIdleTimeoutReopensASilentPort) {
 
   EXPECT_GE(connects.load(), 2) << "the silent port was closed but never reopened";
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 TEST(TransportSerialTest, RxIdleTimeoutIsOffByDefault) {
@@ -270,6 +294,12 @@ TEST(TransportSerialTest, RxIdleTimeoutIsOffByDefault) {
 
   EXPECT_EQ(connects.load(), 1) << "a silent port was torn down with the watchdog disabled";
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 // Arriving data has to push the deadline back, otherwise the watchdog tears
@@ -299,6 +329,12 @@ TEST(TransportSerialTest, ReceivedDataRearmsTheRxIdleTimeout) {
 
   EXPECT_EQ(connects.load(), 1) << "a stream arriving every 10ms tripped a 30ms watchdog";
   serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 // operation_aborted after stop must not trigger reconnect/reopen
