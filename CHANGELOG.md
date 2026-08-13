@@ -85,6 +85,18 @@ and ABI policy.
   at 115200 baud could arrive 16 ms late regardless of anything the library
   did. Best effort: drivers with no such timer refuse the request, which is
   logged at debug level and does not fail the open. See `docs/tuning.md`.
+- `MessageContext::received_at()`, the steady-clock time the payload arrived.
+
+  ```cpp
+  const auto age = std::chrono::steady_clock::now() - ctx.received_at();
+  ```
+
+  Stamped at construction, which on every receive path is where the bytes come
+  off the transport, so a batch handler sees one arrival time per context
+  instead of the flush time, and a framer emitting several messages from one
+  read gives each of them that read's time. Steady rather than system so the
+  value survives a clock step; see `docs/callbacks.md` for putting it on a wall
+  clock.
 
 - Optional TLS for the TCP server, behind `-DWIRESTEAD_ENABLE_TLS=ON`. A default
   build is unchanged and has no OpenSSL dependency.
