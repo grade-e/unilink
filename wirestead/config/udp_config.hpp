@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <boost/asio/ip/address.hpp>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -26,6 +27,17 @@
 namespace wirestead {
 namespace config {
 
+// True for an address literal inside the multicast ranges - 224.0.0.0/4 for
+// IPv4, ff00::/8 for IPv6. Anything else, including a hostname or a unicast
+// address, is rejected: joining a group on a unicast address fails at the
+// setsockopt with an error that says nothing about which setting was wrong.
+inline bool is_multicast_address(const std::string& address) {
+  boost::system::error_code ec;
+  const auto parsed = boost::asio::ip::make_address(address, ec);
+  if (ec) return false;
+  return parsed.is_multicast();
+}
+
 struct UdpConfig {
   std::string bind_address = "0.0.0.0";
   uint16_t local_port = 0;
@@ -35,6 +47,20 @@ struct UdpConfig {
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
   bool enable_broadcast = false;
   bool reuse_address = false;
+
+  // Join this multicast group after binding, so the socket receives datagrams
+  // addressed to it. IPv4 groups are 224.0.0.0/4, IPv6 groups are ff00::/8.
+  //
+  // `multicast_interface` picks which NIC to join on, by its local IPv4
+  // address. A robot with a sensor on one interface and a network on another
+  // needs it; leave it empty to let the kernel choose, which is only reliable
+  // with a single interface. IPv6 always uses the kernel's choice.
+  //
+  // Receiving is all this covers. Sending to a group already works through
+  // remote_address, at the default TTL of 1 - one hop, so the local subnet
+  // only, which is where a robot's sensors are.
+  std::optional<std::string> multicast_group;
+  std::optional<std::string> multicast_interface;
   bool enable_memory_pool = true;
   bool stop_on_callback_exception = false;
   size_t send_buffer_size = 0;
@@ -57,6 +83,8 @@ struct UdpConfig {
       return false;
     }
     if (remote_port && *remote_port == 0) return false;
+    if (multicast_group && !is_multicast_address(*multicast_group)) return false;
+    if (multicast_interface && !util::InputValidator::is_valid_ipv4(*multicast_interface)) return false;
     if (send_buffer_size != 0 && (send_buffer_size < base::constants::MIN_SOCKET_BUFFER_SIZE ||
                                   send_buffer_size > base::constants::MAX_SOCKET_BUFFER_SIZE)) {
       return false;

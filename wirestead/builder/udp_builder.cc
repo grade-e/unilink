@@ -53,6 +53,8 @@ std::unique_ptr<wrapper::UdpClient> UdpClientBuilder::build() {
   cfg.remote_port = remote_port_;
   cfg.enable_broadcast = enable_broadcast_;
   cfg.reuse_address = reuse_address_;
+  cfg.multicast_group = multicast_group_;
+  cfg.multicast_interface = multicast_interface_;
   cfg.send_buffer_size = send_buffer_size_;
   cfg.receive_buffer_size = receive_buffer_size_;
 
@@ -121,6 +123,16 @@ UdpClientBuilder& UdpClientBuilder::broadcast(bool enable) {
   return *this;
 }
 
+UdpClientBuilder& UdpClientBuilder::multicast_group(const std::string& group, const std::string& interface_address) {
+  multicast_group_ = group;
+  if (interface_address.empty()) {
+    multicast_interface_.reset();
+  } else {
+    multicast_interface_ = interface_address;
+  }
+  return *this;
+}
+
 UdpClientBuilder& UdpClientBuilder::reuse_address(bool enable) {
   reuse_address_ = enable;
   return *this;
@@ -165,6 +177,8 @@ std::unique_ptr<wrapper::UdpServer> UdpServerBuilder::build() {
   cfg.local_port = local_port_;
   cfg.enable_broadcast = enable_broadcast_;
   cfg.reuse_address = reuse_address_;
+  cfg.multicast_group = multicast_group_;
+  cfg.multicast_interface = multicast_interface_;
   cfg.send_buffer_size = send_buffer_size_;
   cfg.receive_buffer_size = receive_buffer_size_;
 
@@ -232,6 +246,16 @@ UdpServerBuilder& UdpServerBuilder::max_clients(uint32_t max) {
 
 UdpServerBuilder& UdpServerBuilder::broadcast(bool enable) {
   enable_broadcast_ = enable;
+  return *this;
+}
+
+UdpServerBuilder& UdpServerBuilder::multicast_group(const std::string& group, const std::string& interface_address) {
+  multicast_group_ = group;
+  if (interface_address.empty()) {
+    multicast_interface_.reset();
+  } else {
+    multicast_interface_ = interface_address;
+  }
   return *this;
 }
 

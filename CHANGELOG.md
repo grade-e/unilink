@@ -10,6 +10,35 @@ and ABI policy.
 
 ### Added
 
+- UDP multicast receive: `multicast_group(group, interface_address = "")` on
+  both UDP builders joins the group after binding.
+
+  ```cpp
+  auto lidar = wirestead::udp_client()
+                   .local_port(2368)
+                   .reuse_address()
+                   .multicast_group("239.255.42.99", "192.168.1.10")
+                   .on_data(...)
+                   .build();
+  ```
+
+  Sensors that publish to a group could not be received at all before this;
+  `enable_broadcast` covers a different thing. The interface argument names the
+  NIC by its local IPv4 address, which a robot with a sensor network on one
+  interface and everything else on another needs - leave it empty only on a
+  host with one interface. IPv6 groups are supported, always on the kernel's
+  choice of interface.
+
+  A failed join fails `start()` rather than coming up as a socket that receives
+  nothing: silently not joining is indistinguishable from a sensor that stopped
+  sending, which is the confusion the feature exists to remove. A group outside
+  224.0.0.0/4 or ff00::/8 is rejected by config validation instead, where the
+  error can name the setting.
+
+  Receiving only. Sending to a group already worked through `remote_address`,
+  at the default TTL of 1 - one hop, so the local subnet, which is where a
+  robot's sensors are.
+
 - Optional TLS for the TCP **client**, behind the same `-DWIRESTEAD_ENABLE_TLS=ON`.
   Two wirestead services can now talk to each other encrypted; before this a
   wirestead client could only reach a wirestead TLS server by not being a

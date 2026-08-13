@@ -100,6 +100,7 @@ foreach(
   test_tcp_client_wrapper_lifecycle.cc
   test_udp_stop_lifecycle.cc
   test_udp_options.cc
+  test_udp_multicast.cc
   test_udp_failure.cc
   test_udp_state.cc
   test_udp_callback_race_stress.cc
