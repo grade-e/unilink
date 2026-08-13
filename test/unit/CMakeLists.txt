@@ -73,6 +73,7 @@ foreach(
   test_memory_tracker_and_buffer.cc
   test_pool_stress.cc
   test_io_context_manager_lifecycle.cc
+  test_io_thread_hook.cc
   test_error_mapping.cc
   test_error_mapping_exhaustive.cc
   test_error_codes_to_string.cc

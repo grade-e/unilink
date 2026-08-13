@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "wirestead/base/common.hpp"
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/config/tcp_server_config.hpp"
 #include "wirestead/factory/channel_factory.hpp"
 #include "wirestead/transport/tcp_server/tcp_server.hpp"
@@ -270,6 +271,7 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
       work_guard_ = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
           boost::asio::make_work_guard(*external_ioc_));
       external_thread_ = std::jthread([ioc = external_ioc_](std::stop_token st) {
+        wirestead::concurrency::run_io_thread_init();
         try {
           std::stop_callback cb(st, [ioc] { ioc->stop(); });
           ioc->run();

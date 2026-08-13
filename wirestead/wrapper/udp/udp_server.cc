@@ -30,6 +30,7 @@
 #include <vector>
 
 #include "wirestead/base/common.hpp"
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/factory/channel_factory.hpp"
 #include "wirestead/transport/udp/udp.hpp"
 #include "wirestead/wrapper/callback_guard.hpp"
@@ -444,6 +445,7 @@ struct UdpServer::Impl : public std::enable_shared_from_this<Impl> {
       work_guard = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
           external_ioc->get_executor());
       external_thread = std::jthread([ioc = external_ioc](std::stop_token st) {
+        wirestead::concurrency::run_io_thread_init();
         try {
           std::stop_callback cb(st, [ioc] { ioc->stop(); });
           ioc->run();

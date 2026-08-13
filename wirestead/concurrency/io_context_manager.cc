@@ -24,6 +24,7 @@
 #include <stop_token>
 #include <thread>
 
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/diagnostics/logger.hpp"
 
 namespace wirestead {
@@ -146,6 +147,7 @@ void IoContextManager::start() {
     }
 
     impl_->io_thread_ = std::jthread([this, context](std::stop_token st) {
+      wirestead::concurrency::run_io_thread_init();
       try {
         // Register stop callback to gracefully stop io_context when jthread is stopped
         std::stop_callback cb(st, [context] { context->stop(); });
