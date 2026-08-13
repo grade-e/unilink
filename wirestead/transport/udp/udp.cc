@@ -90,7 +90,11 @@ struct UdpChannel::Impl {
   // singleton - avoids cross-channel contention on the singleton's bucket
   // mutexes. Capacity is much smaller than the old shared default since
   // it's no longer amortized across every channel in the process.
-  memory::MemoryPool pool_{50, 200};
+  // Prefill stays 0. This literal was written while MemoryPool discarded
+  // initial_pool_size, so 50 allocated nothing; #575 made the parameter real
+  // and turned it into ~1 MiB eagerly allocated per channel at construction.
+  // The pool fills as buffers are released.
+  memory::MemoryPool pool_{0, 200};
   // Atomic rather than mutex-guarded: read both from the strand (report_backpressure,
   // do_write) and from arbitrary caller threads (the async_try_write_* fast-fail
   // prechecks) - a strand-post here would only protect the former, not the latter (#436).
