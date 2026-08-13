@@ -25,10 +25,31 @@ namespace wirestead {
 namespace framer {
 
 /**
- * @brief Framer for binary packet protocols.
+ * @brief Framer for binary packet protocols delimited by byte patterns.
  *
- * Handles protocols with start and end patterns.
- * Syncs by searching for start pattern, then collects data until end pattern is found.
+ * Syncs by searching for the start pattern, then collects data until the end
+ * pattern is found.
+ *
+ * @warning **The payload must not be able to contain the end pattern.** There
+ * is no escaping or byte stuffing: the end pattern is located with a plain
+ * search over the collected bytes, so the first occurrence ends the frame
+ * wherever it appears. A binary protocol whose payload spans arbitrary byte
+ * values will therefore be cut short as soon as those bytes happen to match,
+ * and the remainder is resynchronised as if it were a new packet - silently,
+ * since a truncated frame is indistinguishable from a short one.
+ *
+ * That makes this framer a fit for protocols with a reserved delimiter (a
+ * text-ish or escaped wire format), and a poor fit for the common
+ * length-prefixed binary layout. For the latter, implement IFramer and pass it
+ * with `framer()` on the builder - the length field tells you exactly how many
+ * bytes to collect, so no byte value is ever special:
+ *
+ * ```cpp
+ * auto ch = wirestead::serial("/dev/ttyUSB0", 115200)
+ *               .framer([] { return std::make_unique<MyLengthPrefixedFramer>(); })
+ *               .on_message(...)
+ *               .build();
+ * ```
  */
 class WIRESTEAD_API PacketFramer : public IFramer {
  public:

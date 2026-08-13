@@ -153,7 +153,11 @@ class BuilderInterface {
   // Framing Support
 
   /**
-   * @brief Set a custom framer factory
+   * @brief Set a custom framer factory.
+   *
+   * The escape hatch for any protocol the two built-in framers do not fit -
+   * most often a length-prefixed binary layout, where PacketFramer's
+   * delimiter search is unsafe. See PacketFramer's warning.
    */
   Derived& framer(std::function<std::unique_ptr<framer::IFramer>()> factory) {
     framer_factory_ = std::move(factory);
@@ -173,7 +177,12 @@ class BuilderInterface {
   }
 
   /**
-   * @brief Activate binary packet framing
+   * @brief Activate binary packet framing between a start and end pattern.
+   *
+   * @warning Only safe when the payload cannot contain the end pattern - there
+   * is no escaping, so the first occurrence ends the frame wherever it falls
+   * and a binary payload gets silently truncated. Use framer() with your own
+   * IFramer for length-prefixed protocols. See PacketFramer for the detail.
    */
   Derived& use_packet_framer(const std::vector<uint8_t>& start_pattern, const std::vector<uint8_t>& end_pattern,
                              size_t max_length) {
