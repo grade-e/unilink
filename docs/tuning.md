@@ -35,6 +35,54 @@ The ceiling is far below `MAX_SOCKET_BUFFER_SIZE` on purpose: this buffer is
 read buffer against the default 1024 connection limit is a gigabyte of
 userspace buffers before any payload.
 
+## Serial low-latency mode
+
+USB serial adapters buffer received bytes behind a driver timer before handing
+them up. An FTDI ships with that timer at **16 ms**, so a 1 ms packet at 115200
+baud can still reach your callback 16 ms late no matter what the rest of the
+stack does. `low_latency` clears it (`ASYNC_LOW_LATENCY` on Linux) and is **on
+by default**.
+
+```cpp
+auto port = wirestead::serial("/dev/ttyUSB0", 115200)
+                .low_latency(false)  // leave the driver's timer alone
+                .on_data([](const wirestead::MessageContext& ctx) { /* ... */ })
+                .build();
+```
+
+Best effort, and deliberately so: drivers with no such timer — native UARTs,
+CDC-ACM — refuse the request, the port opens normally, and the refusal is
+logged at debug level. Linux only; elsewhere the setting is a no-op.
+
+Turn it off to trade latency back for fewer wakeups on a high-rate stream where
+arrival time does not matter. Unlike everything else on this page, this one is
+worth setting without a measurement first: nothing else in the library recovers
+16 ms.
+
+## Serial receive watchdog
+
+A device that stops streaming without erroring leaves a healthy open port and a
+read that never completes, so nothing else in the transport notices — the
+classic wedged USB adapter or sensor that just goes quiet.
+`rx_idle_timeout` closes and reopens the port after that long without received
+data. Off by default.
+
+```cpp
+auto port = wirestead::serial("/dev/ttyUSB0", 115200)
+                .rx_idle_timeout(std::chrono::milliseconds(500))
+                .build();
+```
+
+Set it above the device's slowest expected interval, with margin — expiry tears
+the link down, so a value below the real gap between messages produces a reopen
+loop rather than a recovery.
+
+Receives only, deliberately unlike the TCP idle timeout, which any traffic in
+either direction resets: a driver polling a mute device writes on schedule and
+would hold a bidirectional timer open forever. Expiry runs the same path as a
+read error, so `reopen_on_error` decides whether the port is reopened or the
+link goes to `Error`.
+
 ## Memory pool prefill
 
 `MemoryPool(initial_pool_size, max_pool_size)` pre-allocates

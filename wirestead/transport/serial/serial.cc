@@ -20,6 +20,7 @@
 
 #include <atomic>
 #include <boost/asio.hpp>
+#include <chrono>
 #include <cstddef>
 #include <deque>
 #include <memory>
@@ -78,6 +79,9 @@ struct Serial::Impl {
   // The pool fills as buffers are released.
   memory::MemoryPool pool_{0, 200};
   net::steady_timer retry_timer_;
+  // Watchdog for cfg_.rx_idle_timeout_ms: armed on connect, pushed back by
+  // every read that carries bytes, so it only ever fires on silence.
+  net::steady_timer rx_idle_timer_;
 
   std::vector<uint8_t> rx_;
   std::deque<BufferVariant> tx_;
@@ -209,6 +213,7 @@ struct Serial::Impl {
         strand_(ioc_.get_executor()),
         cfg_(cfg),
         retry_timer_(ioc_),
+        rx_idle_timer_(ioc_),
         bp_strategy_(cfg.backpressure_strategy),
         retry_interval_ms_(cfg.retry_interval_ms),
         bp_high_(cfg.backpressure_threshold) {
@@ -223,6 +228,7 @@ struct Serial::Impl {
         port_(std::move(port)),
         cfg_(cfg),
         retry_timer_(ioc),
+        rx_idle_timer_(ioc),
         bp_strategy_(cfg.backpressure_strategy),
         retry_interval_ms_(cfg.retry_interval_ms),
         bp_high_(cfg.backpressure_threshold) {
@@ -312,8 +318,16 @@ struct Serial::Impl {
       return;
     }
 
+    // Best effort, after the line settings and before the first read: a driver
+    // without a latency timer just says no, and the port is fine either way.
+    if (cfg_.low_latency && !port_->set_low_latency()) {
+      WIRESTEAD_LOG_DEBUG("serial", "configure",
+                          fmt::format("Low-latency mode unavailable on {}, using the driver default", cfg_.device));
+    }
+
     WIRESTEAD_LOG_INFO("serial", "connect", fmt::format("Device opened: {}", cfg_.device));
     start_read(self);
+    reset_rx_idle_timer(self);
 
     opened_.store(true);
     state_.set(LinkState::Connected);
@@ -329,7 +343,10 @@ struct Serial::Impl {
             impl->handle_error(self, "read", ec);
             return;
           }
-          if (n > 0) impl->stats_.record_received(n);
+          if (n > 0) {
+            impl->stats_.record_received(n);
+            impl->reset_rx_idle_timer(self);
+          }
           interface::SharedCallback<OnBytes> on_bytes;
           {
             std::lock_guard<std::mutex> lock(impl->callback_mtx_);
@@ -441,6 +458,10 @@ struct Serial::Impl {
 
     if (ec == boost::asio::error::operation_aborted) {
       if (state_.is_state(LinkState::Error)) return;
+      // Connecting means a reopen is already scheduled and the port was closed
+      // on purpose - the read this aborts is the one that closure cancelled.
+      // Cleaning up here would cancel that retry and report Closed instead.
+      if (state_.is_state(LinkState::Connecting)) return;
       perform_cleanup();
       return;
     }
@@ -476,7 +497,29 @@ struct Serial::Impl {
     });
   }
 
+  // Rearmed by every read that carried bytes, so the deadline always measures
+  // silence rather than time since connect. Writes deliberately do not rearm
+  // it: a driver polling a mute device would otherwise keep it alive forever.
+  void reset_rx_idle_timer(std::shared_ptr<Serial> self) {
+    const unsigned timeout_ms = cfg_.rx_idle_timeout_ms;
+    if (timeout_ms == 0 || stopping_.load()) return;
+
+    rx_idle_timer_.expires_after(std::chrono::milliseconds(timeout_ms));
+    rx_idle_timer_.async_wait(net::bind_executor(strand_, [self, timeout_ms](const boost::system::error_code& e) {
+      if (e) return;  // rearmed or cancelled
+      auto impl = self->get_impl();
+      if (impl->stopping_.load() || !impl->opened_.load()) return;
+
+      WIRESTEAD_LOG_WARNING("serial", "rx_idle_timeout",
+                            fmt::format("No data received for {}ms on {}", timeout_ms, impl->cfg_.device));
+      // Same path a read error takes, so reopen_on_error decides what happens
+      // next and the reconnect/backoff plumbing is not duplicated here.
+      impl->handle_error(self, "rx_idle_timeout", make_error_code(boost::asio::error::timed_out));
+    }));
+  }
+
   void close_port() {
+    rx_idle_timer_.cancel();
     boost::system::error_code ec;
     if (port_ && port_->is_open()) {
       port_->close(ec);

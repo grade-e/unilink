@@ -37,7 +37,37 @@ struct SerialConfig {
   enum class Flow { None, Software, Hardware } flow = Flow::None;
 
   size_t read_chunk = base::constants::DEFAULT_READ_BUFFER_SIZE;
+
+  // Ask the kernel driver to hand bytes up as soon as they arrive instead of
+  // waiting out its buffering timer. On Linux this is ASYNC_LOW_LATENCY, and
+  // it matters most on USB serial adapters: an FTDI defaults to a 16 ms
+  // latency timer, so a 1 ms packet at 115200 baud can still reach the
+  // callback 16 ms late — enough to break a control loop on its own.
+  //
+  // Best effort by design. Drivers that have no such timer (CDC-ACM, most
+  // native UARTs) reject the request, and that is not an error: the port opens
+  // and runs normally either way. Set false to leave the driver's default
+  // alone, which trades latency for fewer wakeups.
+  bool low_latency = true;
+
   bool reopen_on_error = true;  // Attempt to reopen on device disconnection/error
+
+  // Reopen the port when no data has been *received* for this long. 0 disables
+  // it, which is the default.
+  //
+  // The failure this catches is a device that stops streaming without ever
+  // reporting an error - a wedged USB adapter, a sensor that stopped talking -
+  // where every other mechanism here sees a perfectly healthy open port and
+  // waits forever.
+  //
+  // Receive-only on purpose, unlike the TCP idle timeout, which any traffic in
+  // either direction resets. A driver polling a mute device writes on schedule
+  // and would keep a bidirectional timer alive forever, which is exactly the
+  // case worth catching.
+  //
+  // Expiry runs the same path as a read error, so reopen_on_error decides
+  // whether the port is reopened or the link goes to Error.
+  unsigned rx_idle_timeout_ms = 0;
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
   bool enable_memory_pool = true;
@@ -62,6 +92,8 @@ struct SerialConfig {
            retry_interval_ms <= base::constants::MAX_RETRY_INTERVAL_MS &&
            backpressure_threshold >= base::constants::MIN_BACKPRESSURE_THRESHOLD &&
            backpressure_threshold <= base::constants::MAX_BACKPRESSURE_THRESHOLD &&
+           (rx_idle_timeout_ms == 0 || (rx_idle_timeout_ms >= base::constants::MIN_IDLE_TIMEOUT_MS &&
+                                        rx_idle_timeout_ms <= base::constants::MAX_IDLE_TIMEOUT_MS)) &&
            (max_retries == -1 || (max_retries >= 0 && max_retries <= base::constants::MAX_RETRIES_LIMIT));
   }
 
@@ -99,6 +131,10 @@ struct SerialConfig {
       backpressure_threshold = base::constants::MIN_BACKPRESSURE_THRESHOLD;
     } else if (backpressure_threshold > base::constants::MAX_BACKPRESSURE_THRESHOLD) {
       backpressure_threshold = base::constants::MAX_BACKPRESSURE_THRESHOLD;
+    }
+
+    if (rx_idle_timeout_ms != 0 && rx_idle_timeout_ms > base::constants::MAX_IDLE_TIMEOUT_MS) {
+      rx_idle_timeout_ms = base::constants::MAX_IDLE_TIMEOUT_MS;
     }
 
     if (max_retries != -1 && max_retries > base::constants::MAX_RETRIES_LIMIT) {

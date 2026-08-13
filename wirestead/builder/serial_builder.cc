@@ -86,6 +86,8 @@ std::unique_ptr<wrapper::Serial> SerialBuilder::build() {
 
   if (reopen_on_error_set_) serial->reopen_on_error(reopen_on_error_);
   if (read_chunk_set_) serial->read_chunk(read_chunk_);
+  if (low_latency_set_) serial->low_latency(low_latency_);
+  if (rx_idle_timeout_set_) serial->rx_idle_timeout(rx_idle_timeout_);
   if (retry_interval_set_) serial->retry_interval(std::chrono::milliseconds(retry_interval_ms_));
 
   if (this->bp_strategy_set_) serial->backpressure_strategy(this->bp_strategy_);
@@ -172,6 +174,18 @@ SerialBuilder& SerialBuilder::flow_control(const std::string& f) {
 SerialBuilder& SerialBuilder::read_chunk(size_t bytes) {
   read_chunk_ = bytes;
   read_chunk_set_ = true;
+  return *this;
+}
+
+SerialBuilder& SerialBuilder::low_latency(bool enable) {
+  low_latency_ = enable;
+  low_latency_set_ = true;
+  return *this;
+}
+
+SerialBuilder& SerialBuilder::rx_idle_timeout(std::chrono::milliseconds timeout) {
+  rx_idle_timeout_ = timeout;
+  rx_idle_timeout_set_ = true;
   return *this;
 }
 

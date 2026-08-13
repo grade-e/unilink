@@ -67,6 +67,11 @@ class FakeSerialPort : public interface::SerialPortInterface {
     ec = flow_control_ec_;
   }
 
+  bool set_low_latency() override {
+    ++low_latency_requests_;
+    return low_latency_supported_;
+  }
+
   void async_read_some(const boost::asio::mutable_buffer&,
                        std::function<void(const boost::system::error_code&, std::size_t)> handler) override {
     read_handler_ = std::move(handler);
@@ -93,6 +98,8 @@ class FakeSerialPort : public interface::SerialPortInterface {
   void set_write_error(boost::system::error_code ec) { write_ec_ = ec; }
   void set_complete_writes(bool complete) { complete_writes_ = complete; }
   int write_count() const { return write_count_; }
+  void set_low_latency_supported(bool supported) { low_latency_supported_ = supported; }
+  int low_latency_requests() const { return low_latency_requests_; }
 
   void complete_pending_write(const boost::system::error_code& ec = {}) {
     if (!pending_write_handler_) return;
@@ -126,6 +133,8 @@ class FakeSerialPort : public interface::SerialPortInterface {
   bool open_{false};
   bool complete_writes_{true};
   int write_count_{0};
+  bool low_latency_supported_{true};
+  int low_latency_requests_{0};
   std::function<void(const boost::system::error_code&, std::size_t)> read_handler_;
   std::function<void(const boost::system::error_code&, std::size_t)> pending_write_handler_;
   std::optional<std::size_t> pending_write_size_;
@@ -151,6 +160,181 @@ TEST(TransportSerialTest, CreateProvidesSharedFromThis) {
     EXPECT_EQ(self.get(), serial.get());
   });
   serial->stop();
+}
+
+// The whole point of cfg_.low_latency is that it reaches the driver, and that a
+// driver refusing it is not treated as a failure - an FTDI takes it, a native
+// UART does not, and both must end up Connected.
+TEST(TransportSerialTest, LowLatencyIsRequestedByDefault) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  std::atomic<bool> connected{false};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connected = true;
+  });
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 1);
+  EXPECT_TRUE(connected.load());
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+TEST(TransportSerialTest, LowLatencyDisabledLeavesTheDriverAlone) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.low_latency = false;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 0);
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+TEST(TransportSerialTest, UnsupportedLowLatencyStillConnects) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  port_raw->set_low_latency_supported(false);
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  std::atomic<bool> connected{false};
+  std::atomic<bool> errored{false};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connected = true;
+    if (state == base::LinkState::Error) errored = true;
+  });
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 1);
+  EXPECT_TRUE(connected.load());
+  EXPECT_FALSE(errored.load());
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+// A device that goes quiet without erroring leaves a healthy open port and a
+// read that never completes, so nothing else in the transport notices. The
+// watchdog has to, and it has to survive its own teardown: closing the port
+// aborts the pending read, and that aborted read must not cancel the reopen it
+// just triggered.
+TEST(TransportSerialTest, RxIdleTimeoutReopensASilentPort) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rx_idle_timeout_ms = 30;
+  cfg.retry_interval_ms = 20;
+  cfg.reopen_on_error = true;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  // Reaching Connected more than once is the reopen: the port is only opened
+  // by the initial start and by a scheduled retry.
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(150ms);
+
+  EXPECT_GE(connects.load(), 2) << "the silent port was closed but never reopened";
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+TEST(TransportSerialTest, RxIdleTimeoutIsOffByDefault) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.retry_interval_ms = 20;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(150ms);
+
+  EXPECT_EQ(connects.load(), 1) << "a silent port was torn down with the watchdog disabled";
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+// Arriving data has to push the deadline back, otherwise the watchdog tears
+// down a perfectly healthy link on a fixed timer.
+TEST(TransportSerialTest, ReceivedDataRearmsTheRxIdleTimeout) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rx_idle_timeout_ms = 30;
+  cfg.retry_interval_ms = 20;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  std::atomic<int> connects{0};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connects.fetch_add(1);
+  });
+
+  serial->start();
+  ioc.run_for(5ms);  // open, configure, arm the watchdog
+
+  for (int i = 0; i < 10; ++i) {
+    port_raw->emit_read(1);
+    ioc.run_for(10ms);
+  }
+
+  EXPECT_EQ(connects.load(), 1) << "a stream arriving every 10ms tripped a 30ms watchdog";
+  serial->stop();
+  // stop() only posts its cleanup when the io_context is external, and that
+  // handler owns a shared_ptr to the transport. Leaving it unrun keeps the
+  // transport alive until ~io_context destroys the handler - which runs
+  // perform_cleanup(), and so the state callback, after the locals it
+  // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
 }
 
 // operation_aborted after stop must not trigger reconnect/reopen
