@@ -62,6 +62,22 @@ foreach(
   test_receive_allocations.cc
   test_accept_allocations.cc
 )
+
+# test_receive_allocations replaces the global operator new/delete to count
+# allocations. ThreadSanitizer defines those itself in libclang_rt.tsan_cxx, so
+# linking the two together fails outright. Excluding the test loses nothing
+# under TSAN: counting allocations while a sanitizer owns allocation measures
+# the sanitizer, not the receive path.
+if(WIRESTEAD_ENABLE_TSAN)
+  list(REMOVE_ITEM WIRESTEAD_TCP_INTEGRATION_TESTS test_receive_allocations.cc)
+endif()
+
+# Only meaningful in a build that has TLS compiled in.
+if(WIRESTEAD_ENABLE_TLS)
+  list(APPEND WIRESTEAD_TCP_INTEGRATION_TESTS test_tls_loopback.cc)
+endif()
+
+foreach(test_file IN LISTS WIRESTEAD_TCP_INTEGRATION_TESTS)
   get_filename_component(test_name ${test_file} NAME_WE)
 
   set(timeout 300)

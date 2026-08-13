@@ -50,6 +50,9 @@ class WIRESTEAD_API TcpClientBuilder : public BuilderInterface<wrapper::TcpClien
 
   TcpClientBuilder& retry_interval(std::chrono::milliseconds interval);
   TcpClientBuilder& max_retries(int max_retries);
+  /** @brief Connect over TLS, verifying the server. Empty ca_file uses the system trust store. */
+  TcpClientBuilder& tls(const std::string& ca_file = "");
+
   TcpClientBuilder& connection_timeout(std::chrono::milliseconds timeout);
   /**
    * @brief Configure application-level idle timeout.
@@ -90,6 +93,9 @@ class WIRESTEAD_API TcpClientBuilder : public BuilderInterface<wrapper::TcpClien
   bool retry_interval_set_{false};
   int max_retries_;
   bool max_retries_set_{false};
+  bool tls_enabled_{false};
+  std::string tls_ca_file_;
+
   std::chrono::milliseconds connection_timeout_;
   bool connection_timeout_set_{false};
   std::chrono::milliseconds idle_timeout_;

@@ -10,6 +10,61 @@ and ABI policy.
 
 ### Added
 
+- Optional TLS for the TCP **client**, behind the same `-DWIRESTEAD_ENABLE_TLS=ON`.
+  Two wirestead services can now talk to each other encrypted; before this a
+  wirestead client could only reach a wirestead TLS server by not being a
+  wirestead client.
+
+  ```cpp
+  auto client = wirestead::tcp_client("example.com", 9000).tls().build();
+  client->tls("/path/to/ca.pem");   // or trust a private CA
+  ```
+
+  Verification is not optional: the chain, the host name and SNI are all checked
+  against the host passed to the constructor. No argument uses the system trust
+  store. `connected()` only becomes true after the handshake, so a peer that
+  fails verification never reports itself connected.
+
+  No extraction refactor was needed. `ssl::stream` can borrow its next layer by
+  reference, so the client keeps owning its socket and connect, socket options,
+  cancel and close are untouched - only reads, writes and shutdown branch.
+
+- Optional TLS for the TCP server, behind `-DWIRESTEAD_ENABLE_TLS=ON`. A default
+  build is unchanged and has no OpenSSL dependency.
+
+  ```cpp
+  auto server = wirestead::tcp_server(9000).tls("fullchain.pem", "privkey.pem").build();
+  ```
+
+  The session layer was already talking to `TcpSocketInterface` rather than a
+  socket, so this is a second implementation of that interface plus one new
+  method on it - `async_handshake()`, which defaults to immediate success and so
+  leaves plain sockets behaving exactly as before. Reads, writes, backpressure
+  and stats are the same code either way.
+
+  Setting only one of the certificate and key fails `start()` rather than
+  falling back to plaintext.
+
+  Closing a TLS connection sends `close_notify` without waiting for the peer's
+  reply: the bidirectional exchange blocks until the peer answers, and a peer
+  that simply stops reading held `stop()` for 8 seconds in testing. `on_connect`
+  fires at accept, before the handshake, so a client that fails it produces a
+  balanced connect/disconnect pair with no data between.
+
+  TLS 1.2 is the floor and is not configurable. Setting `tls()` in a build
+  without `WIRESTEAD_ENABLE_TLS`, or pointing it at a certificate that cannot be
+  loaded, makes `start()` fail - a server asked for encryption it cannot provide
+  must not come up in plaintext instead. No client certificates, peer
+  verification, cipher suite selection or certificate reload; the TCP client,
+  UDP, Serial and UDS remain plaintext, and DTLS is not supported. See
+  `docs/security.md`.
+
+- A one-time WARNING log the first time a channel drops queued data, pointing at
+  `RuntimeStats::dropped_bytes`. `BestEffort` discards by design and
+  `on_backpressure()` is not a reliable signal that it happened, so a caller who
+  never polls the counters could lose data in silence. Latched per channel, not
+  per drop - BestEffort can drop hundreds of thousands of times a second.
+
 - `ServerInterface::client_stats(ClientId)` returns one connected client's
   `RuntimeStats`, or `std::nullopt` when the id has no session behind it.
   `stats()` reports the server as a whole and cannot say which client produced

@@ -26,6 +26,9 @@
 #include <array>
 #include <atomic>
 #include <boost/asio.hpp>
+#ifdef WIRESTEAD_TLS_ENABLED
+#include <boost/asio/ssl.hpp>
+#endif
 #include <cstdint>
 #include <cstring>
 #include <deque>
@@ -81,6 +84,25 @@ struct TcpClient::Impl {
   std::atomic<uint64_t> current_seq_{0};
   tcp::resolver resolver_;
   tcp::socket socket_;
+
+#ifdef WIRESTEAD_TLS_ENABLED
+  // The stream borrows socket_ rather than owning it, so connect, socket
+  // options, cancel and close all keep operating on socket_ exactly as they do
+  // without TLS. Only reads, writes and shutdown route through here, and only
+  // while a connection is up - it is rebuilt per connection because a TLS
+  // session cannot outlive the socket it negotiated on.
+  std::shared_ptr<boost::asio::ssl::context> ssl_context_;
+  std::optional<boost::asio::ssl::stream<tcp::socket&>> tls_;
+#endif
+
+  // True when this connection is encrypted. Reads to it happen on the strand.
+  bool tls_active() const {
+#ifdef WIRESTEAD_TLS_ENABLED
+    return tls_.has_value();
+#else
+    return false;
+#endif
+  }
   // Guards the mutable subset of cfg_ (retry_interval_ms, max_retries,
   // connection_timeout_ms, idle_timeout_ms, idle_timeout_action) and
   // reconnect_policy_ below - the fields that have runtime setters
@@ -207,6 +229,8 @@ struct TcpClient::Impl {
   void notify_state();
   void reset_io_objects();
   void apply_socket_options();
+  void handshake_then(std::shared_ptr<TcpClient> self, uint64_t seq, std::function<void()> next);
+  void finish_connect(std::shared_ptr<TcpClient> self, uint64_t seq);
   void reset_idle_timer(std::shared_ptr<TcpClient> self, uint64_t seq);
   void cancel_idle_timer();
   void record_error(diagnostics::ErrorLevel lvl, diagnostics::ErrorCategory cat, std::string_view operation,
@@ -761,7 +785,6 @@ void TcpClient::Impl::do_resolve_connect(std::shared_ptr<TcpClient> self, uint64
           self->impl_->connect_timer_.cancel();
           self->impl_->retry_attempts_ = 0;
           self->impl_->reconnect_attempt_count_ = 0;
-          self->impl_->connected_.store(true);
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
           int yes = 1;
@@ -770,21 +793,102 @@ void TcpClient::Impl::do_resolve_connect(std::shared_ptr<TcpClient> self, uint64
 #endif
 
           self->impl_->apply_socket_options();
-          self->impl_->transition_to(LinkState::Connected);
-          boost::system::error_code ep_ec;
-          auto rep = self->impl_->socket_.remote_endpoint(ep_ec);
-          if (!ep_ec) {
-            WIRESTEAD_LOG_INFO("tcp_client", "connect",
-                               fmt::format("Connected to {}:{}", rep.address().to_string(), rep.port()));
-          }
-          self->impl_->start_read(self, seq);
-          self->impl_->reset_idle_timer(self, seq);
-          net::post(self->impl_->strand_, [self, seq]() {
-            self->impl_->writing_ = false;
-            self->impl_->do_write(self, seq);
-          });
+
+          // TCP is up; TLS still has to prove who answered. Reading before the
+          // handshake completes would hand the session ciphertext, and a failed
+          // handshake must not be reported as a working connection - so the
+          // rest of the connect path waits behind it. Plaintext runs the
+          // continuation immediately, which is what it did before TLS existed.
+          self->impl_->handshake_then(self, seq, [self, seq] { self->impl_->finish_connect(self, seq); });
         });
       });
+}
+
+// Sets up the TLS stream if configured, runs the handshake, then hands control
+// back. Without TLS - or in a build without it - `next` runs straight away and
+// the connect path is byte for byte what it was.
+void TcpClient::Impl::handshake_then(std::shared_ptr<TcpClient> self, uint64_t seq, std::function<void()> next) {
+#ifdef WIRESTEAD_TLS_ENABLED
+  bool want_tls = false;
+  std::string ca_file;
+  {
+    std::lock_guard<std::mutex> lock(cfg_mtx_);
+    want_tls = cfg_.tls_enabled;
+    ca_file = cfg_.tls_ca_file;
+  }
+
+  if (want_tls) {
+    namespace ssl = boost::asio::ssl;
+    try {
+      if (!ssl_context_) {
+        auto ctx = std::make_shared<ssl::context>(ssl::context::tls_client);
+        ctx->set_options(ssl::context::default_workarounds | ssl::context::no_sslv2 | ssl::context::no_sslv3 |
+                         ssl::context::no_tlsv1 | ssl::context::no_tlsv1_1);
+        if (ca_file.empty()) {
+          ctx->set_default_verify_paths();
+        } else {
+          ctx->load_verify_file(ca_file);
+        }
+        // Not optional. An unverified TLS connection encrypts traffic to
+        // whoever answered, which is what an attacker in the middle wants.
+        ctx->set_verify_mode(ssl::verify_peer);
+        ssl_context_ = std::move(ctx);
+      }
+      tls_.emplace(socket_, *ssl_context_);
+      tls_->set_verify_callback(ssl::host_name_verification(cfg_.host));
+      // SNI, and the name the certificate is checked against.
+      ::SSL_set_tlsext_host_name(tls_->native_handle(), cfg_.host.c_str());
+    } catch (const std::exception& e) {
+      const std::string msg = std::string("TLS setup failed: ") + e.what();
+      WIRESTEAD_LOG_ERROR("tcp_client", "handshake", msg);
+      record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::CONNECTION, "handshake",
+                   boost::asio::error::invalid_argument, msg, false, 0);
+      tls_.reset();
+      handle_close(self, seq, boost::asio::error::invalid_argument);
+      return;
+    }
+
+    tls_->async_handshake(ssl::stream_base::client,
+                          net::bind_executor(strand_, [this, self, seq, next](const boost::system::error_code& ec) {
+                            if (seq != current_seq_.load() || stop_requested_.load() || stopping_.load()) return;
+                            if (ec) {
+                              WIRESTEAD_LOG_ERROR("tcp_client", "handshake", "TLS handshake failed: " + ec.message());
+                              record_error(diagnostics::ErrorLevel::ERROR, diagnostics::ErrorCategory::CONNECTION,
+                                           "handshake", ec, "TLS handshake failed: " + ec.message(), false, 0);
+                              tls_.reset();
+                              handle_close(self, seq, ec);
+                              return;
+                            }
+                            next();
+                          }));
+    return;
+  }
+#else
+  (void)self;
+  (void)seq;
+#endif
+  next();
+}
+
+void TcpClient::Impl::finish_connect(std::shared_ptr<TcpClient> self, uint64_t seq) {
+  // Set here rather than at TCP connect: with TLS, a socket whose handshake
+  // has not finished is not a usable connection, and connected() is what
+  // callers poll before sending. Reporting true for a peer that failed
+  // verification would be worse than useless.
+  connected_.store(true);
+  transition_to(LinkState::Connected);
+  boost::system::error_code ep_ec;
+  auto rep = socket_.remote_endpoint(ep_ec);
+  if (!ep_ec) {
+    WIRESTEAD_LOG_INFO("tcp_client", "connect",
+                       fmt::format("Connected to {}:{}", rep.address().to_string(), rep.port()));
+  }
+  start_read(self, seq);
+  reset_idle_timer(self, seq);
+  net::post(strand_, [self, seq]() {
+    self->impl_->writing_ = false;
+    self->impl_->do_write(self, seq);
+  });
 }
 
 void TcpClient::Impl::schedule_retry(std::shared_ptr<TcpClient> self, uint64_t seq) {
@@ -861,7 +965,7 @@ void TcpClient::Impl::schedule_retry(std::shared_ptr<TcpClient> self, uint64_t s
 }
 
 void TcpClient::Impl::start_read(std::shared_ptr<TcpClient> self, uint64_t seq) {
-  socket_.async_read_some(net::buffer(rx_.data(), rx_.size()), [self, seq](auto ec, std::size_t n) {
+  auto on_read = [self, seq](auto ec, std::size_t n) {
     if (ec == net::error::operation_aborted || seq != self->impl_->current_seq_.load()) {
       return;
     }
@@ -900,7 +1004,14 @@ void TcpClient::Impl::start_read(std::shared_ptr<TcpClient> self, uint64_t seq) 
       }
     }
     self->impl_->start_read(self, seq);
-  });
+  };
+#ifdef WIRESTEAD_TLS_ENABLED
+  if (tls_) {
+    tls_->async_read_some(net::buffer(rx_.data(), rx_.size()), std::move(on_read));
+    return;
+  }
+#endif
+  socket_.async_read_some(net::buffer(rx_.data(), rx_.size()), std::move(on_read));
 }
 
 void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
@@ -966,6 +1077,12 @@ void TcpClient::Impl::do_write(std::shared_ptr<TcpClient> self, uint64_t seq) {
     self->impl_->do_write(self, seq);
   };
 
+#ifdef WIRESTEAD_TLS_ENABLED
+  if (tls_) {
+    net::async_write(*tls_, current_write_views_, on_write);
+    return;
+  }
+#endif
   net::async_write(socket_, current_write_views_, on_write);
 }
 
@@ -1041,6 +1158,12 @@ void TcpClient::Impl::handle_idle_timeout(std::shared_ptr<TcpClient> self, uint6
 
 void TcpClient::Impl::close_socket() {
   boost::system::error_code ec;
+#ifdef WIRESTEAD_TLS_ENABLED
+  // One SSL_shutdown writes close_notify and returns; a second would wait for
+  // the peer's, which is the block measured at 8 s on the server side.
+  if (tls_) ::SSL_shutdown(tls_->native_handle());
+  tls_.reset();
+#endif
   socket_.shutdown(tcp::socket::shutdown_both, ec);
   socket_.close(ec);
 }

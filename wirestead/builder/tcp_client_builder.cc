@@ -65,6 +65,7 @@ std::unique_ptr<wrapper::TcpClient> TcpClientBuilder::build() {
 
   if (retry_interval_set_) client->retry_interval(retry_interval_);
   if (max_retries_set_) client->max_retries(max_retries_);
+  if (tls_enabled_) client->tls(tls_ca_file_);
   if (connection_timeout_set_) client->connection_timeout(connection_timeout_);
   if (idle_timeout_set_) client->idle_timeout(idle_timeout_);
   if (idle_timeout_action_set_) client->idle_timeout_action(idle_timeout_action_);
@@ -108,6 +109,12 @@ TcpClientBuilder& TcpClientBuilder::retry_interval(std::chrono::milliseconds int
 TcpClientBuilder& TcpClientBuilder::max_retries(int max_retries) {
   max_retries_ = max_retries;
   max_retries_set_ = true;
+  return *this;
+}
+
+TcpClientBuilder& TcpClientBuilder::tls(const std::string& ca_file) {
+  tls_enabled_ = true;
+  tls_ca_file_ = ca_file;
   return *this;
 }
 

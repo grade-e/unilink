@@ -45,6 +45,8 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
   std::condition_variable bp_cv_;
   uint16_t port_;
   std::string bind_address_{"0.0.0.0"};
+  std::string tls_certificate_file_;
+  std::string tls_private_key_file_;
   std::shared_ptr<interface::Channel> channel_;
   std::shared_ptr<boost::asio::io_context> external_ioc_;
   std::atomic<bool> use_external_context_{false};
@@ -238,6 +240,8 @@ struct TcpServer::Impl : public std::enable_shared_from_this<Impl> {
       config.receive_buffer_size = receive_buffer_size_.load();
       config.read_buffer_size = read_buffer_size_.load();
       config.use_shared_context = shared_context_.load();
+      config.tls_certificate_file = tls_certificate_file_;
+      config.tls_private_key_file = tls_private_key_file_;
 
       channel_ = factory::ChannelFactory::create(config, external_ioc_);
       transport_cache_ = std::dynamic_pointer_cast<transport::TcpServer>(channel_);
@@ -743,6 +747,13 @@ TcpServer& TcpServer::tcp_no_delay(bool enable) {
 
 TcpServer& TcpServer::keep_alive(bool enable) {
   impl_->keep_alive_.store(enable);
+  return *this;
+}
+
+TcpServer& TcpServer::tls(const std::string& certificate_file, const std::string& private_key_file) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->tls_certificate_file_ = certificate_file;
+  impl_->tls_private_key_file_ = private_key_file;
   return *this;
 }
 

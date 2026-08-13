@@ -86,6 +86,13 @@ option(WIRESTEAD_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(WIRESTEAD_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer" OFF)
 option(WIRESTEAD_ENABLE_TSAN "Enable ThreadSanitizer" OFF)
 
+# Off by default on purpose. Turning it on pulls in OpenSSL, which is a cost the
+# local and embedded deployments this library targets should not pay to get a
+# feature they do not use. See docs/security.md.
+option(WIRESTEAD_ENABLE_TLS "Enable optional TLS support for the TCP server"
+       OFF
+)
+
 option(WIRESTEAD_ENABLE_LTO "Enable Link Time Optimization" OFF)
 
 # Resolved once here so the target helpers can just read it. Asking the

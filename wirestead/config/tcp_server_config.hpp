@@ -41,6 +41,15 @@ struct TcpServerConfig {
   int max_port_retries = 3;           // Maximum number of retry attempts
   int port_retry_interval_ms = 1000;  // Retry interval in milliseconds
 
+  // TLS. Both must be set for the server to serve TLS; leaving them empty keeps
+  // the connection in plaintext, which is the default. Only honoured in a build
+  // configured with WIRESTEAD_ENABLE_TLS - a build without it rejects a
+  // configured certificate at start() rather than silently serving plaintext.
+  std::string tls_certificate_file;
+  std::string tls_private_key_file;
+
+  [[nodiscard]] bool tls_enabled() const { return !tls_certificate_file.empty() && !tls_private_key_file.empty(); }
+
   int idle_timeout_ms = static_cast<int>(base::constants::DEFAULT_IDLE_TIMEOUT_MS);  // 0 = disabled
   bool tcp_no_delay = base::constants::DEFAULT_TCP_NO_DELAY;
   bool keep_alive = base::constants::DEFAULT_KEEP_ALIVE;
