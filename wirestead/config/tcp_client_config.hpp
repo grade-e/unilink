@@ -47,6 +47,16 @@ struct TcpClientConfig {
   // connection.
   size_t read_buffer_size = base::constants::DEFAULT_READ_BUFFER_SIZE;
 
+  // TLS. Off unless tls_enabled is set, which is the default.
+  //
+  // The server side of TLS proves who it is; the client side is what checks.
+  // Verification is therefore on and not optional: an unverified TLS connection
+  // encrypts traffic to whoever answered, which is exactly what an attacker in
+  // the middle wants. Leave tls_ca_file empty to use the system trust store,
+  // or point it at a PEM to trust a private CA or a self-signed certificate.
+  bool tls_enabled = false;
+  std::string tls_ca_file;
+
   TcpClientConfig() = default;
   TcpClientConfig(const TcpClientConfig&) = default;
   TcpClientConfig& operator=(const TcpClientConfig&) = default;

@@ -95,6 +95,18 @@ class WIRESTEAD_API TcpClient : public ChannelInterface {
   TcpClient& batch_latency(std::chrono::milliseconds latency);
   TcpClient& retry_interval(std::chrono::milliseconds interval);
   TcpClient& max_retries(int max_retries);
+  /**
+   * @brief Connect over TLS, verifying the server's certificate.
+   *
+   * Verification is not optional: an unverified TLS connection encrypts traffic
+   * to whoever answered. With no argument the system trust store is used; pass
+   * a PEM to trust a private CA or a self-signed certificate instead. The host
+   * given to the constructor is the name the certificate must match.
+   *
+   * Must be set before start(). Requires a build with WIRESTEAD_ENABLE_TLS.
+   */
+  TcpClient& tls(const std::string& ca_file = "");
+
   TcpClient& connection_timeout(std::chrono::milliseconds timeout);
   /**
    * @brief Configure application-level idle timeout.
