@@ -73,7 +73,11 @@ struct UdsClient::Impl {
   // a fresh std::vector, despite a dead PooledBuffer std::visit branch
   // suggesting otherwise. Give it a real per-channel pool like every other
   // transport, instead of the process-wide GlobalMemoryPool singleton.
-  memory::MemoryPool pool_{50, 200};
+  // Prefill stays 0. This literal was written while MemoryPool discarded
+  // initial_pool_size, so 50 allocated nothing; #575 made the parameter real
+  // and turned it into ~1 MiB eagerly allocated per channel at construction.
+  // The pool fills as buffers are released.
+  memory::MemoryPool pool_{0, 200};
   net::steady_timer retry_timer_;
   net::steady_timer connect_timer_;
   bool owns_ioc_ = true;

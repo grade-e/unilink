@@ -105,7 +105,11 @@ class WIRESTEAD_API UdsServerSession : public std::enable_shared_from_this<UdsSe
   // singleton - avoids cross-channel contention on the singleton's bucket
   // mutexes. Also fixes UDS never actually pooling at all (async_write_copy
   // used to always heap-allocate a fresh std::vector).
-  memory::MemoryPool pool_{50, 200};
+  // Prefill stays 0. This literal was written while MemoryPool discarded
+  // initial_pool_size, so 50 allocated nothing; #575 made the parameter real
+  // and turned it into ~1 MiB eagerly allocated per accepted session, on the
+  // accept handler itself. The pool fills as buffers are released.
+  memory::MemoryPool pool_{0, 200};
   bool enable_memory_pool_ = true;
   // Sized from the server's read_buffer_size rather than being a fixed
   // std::array: this buffer exists per connection, so a server trades memory

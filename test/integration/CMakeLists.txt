@@ -60,6 +60,7 @@ foreach(
   test_read_buffer_size.cc
   test_gather_write.cc
   test_receive_allocations.cc
+  test_accept_allocations.cc
 )
   get_filename_component(test_name ${test_file} NAME_WE)
 

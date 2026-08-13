@@ -46,6 +46,25 @@ and ABI policy.
 
 ### Fixed
 
+- Every transport instance and every accepted server session eagerly allocated
+  roughly 1 MiB of memory-pool buffers at construction. The six call sites
+  passed `MemoryPool{50, 200}`, written while `initial_pool_size` was discarded
+  and so allocated nothing; v0.9.3 made that parameter real without revisiting
+  them, which turned it into 48 `new[]` calls per object. For a server the cost
+  landed on the accept handler itself, before the next connection could be
+  accepted - measured at 128.7 µs per session against 1.4 µs without the
+  prefill - and scaled with connected clients, reaching about 1 GiB at the
+  default 1024 connection limit. `enable_memory_pool(false)` did not avoid it.
+  The pools now start empty, as `docs/tuning.md` already documented, and fill
+  themselves as buffers are released. Callers constructing a `MemoryPool`
+  directly are unaffected; prefill remains available and still defaults to 0.
+
+  `GlobalMemoryPool::create_optimized()` and `create_size_optimized()` carried
+  the same stale prefill arguments and so allocated roughly 17 MB and 26 MB up
+  front since v0.9.3. Both now start empty. Their `max_pool_size` is unchanged,
+  which is what those factories were for: they raise how many released buffers
+  stay resident, not how many exist before the first `acquire()`.
+
 - `TcpServer::stats()` and `UdsServer::stats()` reported `max_queued_bytes` as
   the sum of every live session's high-water mark. Peaks that occurred at
   different times were added together, so the server could report a queue depth

@@ -72,7 +72,11 @@ struct Serial::Impl {
   // singleton - avoids cross-channel contention on the singleton's bucket
   // mutexes. Capacity is much smaller than the old shared default since
   // it's no longer amortized across every channel in the process.
-  memory::MemoryPool pool_{50, 200};
+  // Prefill stays 0. This literal was written while MemoryPool discarded
+  // initial_pool_size, so 50 allocated nothing; #575 made the parameter real
+  // and turned it into ~1 MiB eagerly allocated per channel at construction.
+  // The pool fills as buffers are released.
+  memory::MemoryPool pool_{0, 200};
   net::steady_timer retry_timer_;
 
   std::vector<uint8_t> rx_;
