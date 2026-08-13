@@ -312,6 +312,13 @@ struct Serial::Impl {
       return;
     }
 
+    // Best effort, after the line settings and before the first read: a driver
+    // without a latency timer just says no, and the port is fine either way.
+    if (cfg_.low_latency && !port_->set_low_latency()) {
+      WIRESTEAD_LOG_DEBUG("serial", "configure",
+                          fmt::format("Low-latency mode unavailable on {}, using the driver default", cfg_.device));
+    }
+
     WIRESTEAD_LOG_INFO("serial", "connect", fmt::format("Device opened: {}", cfg_.device));
     start_read(self);
 

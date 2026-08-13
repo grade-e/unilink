@@ -67,6 +67,11 @@ class FakeSerialPort : public interface::SerialPortInterface {
     ec = flow_control_ec_;
   }
 
+  bool set_low_latency() override {
+    ++low_latency_requests_;
+    return low_latency_supported_;
+  }
+
   void async_read_some(const boost::asio::mutable_buffer&,
                        std::function<void(const boost::system::error_code&, std::size_t)> handler) override {
     read_handler_ = std::move(handler);
@@ -93,6 +98,8 @@ class FakeSerialPort : public interface::SerialPortInterface {
   void set_write_error(boost::system::error_code ec) { write_ec_ = ec; }
   void set_complete_writes(bool complete) { complete_writes_ = complete; }
   int write_count() const { return write_count_; }
+  void set_low_latency_supported(bool supported) { low_latency_supported_ = supported; }
+  int low_latency_requests() const { return low_latency_requests_; }
 
   void complete_pending_write(const boost::system::error_code& ec = {}) {
     if (!pending_write_handler_) return;
@@ -126,6 +133,8 @@ class FakeSerialPort : public interface::SerialPortInterface {
   bool open_{false};
   bool complete_writes_{true};
   int write_count_{0};
+  bool low_latency_supported_{true};
+  int low_latency_requests_{0};
   std::function<void(const boost::system::error_code&, std::size_t)> read_handler_;
   std::function<void(const boost::system::error_code&, std::size_t)> pending_write_handler_;
   std::optional<std::size_t> pending_write_size_;
@@ -150,6 +159,68 @@ TEST(TransportSerialTest, CreateProvidesSharedFromThis) {
     auto self = serial->shared_from_this();
     EXPECT_EQ(self.get(), serial.get());
   });
+  serial->stop();
+}
+
+// The whole point of cfg_.low_latency is that it reaches the driver, and that a
+// driver refusing it is not treated as a failure - an FTDI takes it, a native
+// UART does not, and both must end up Connected.
+TEST(TransportSerialTest, LowLatencyIsRequestedByDefault) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  std::atomic<bool> connected{false};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connected = true;
+  });
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 1);
+  EXPECT_TRUE(connected.load());
+  serial->stop();
+}
+
+TEST(TransportSerialTest, LowLatencyDisabledLeavesTheDriverAlone) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.low_latency = false;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 0);
+  serial->stop();
+}
+
+TEST(TransportSerialTest, UnsupportedLowLatencyStillConnects) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  port_raw->set_low_latency_supported(false);
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  std::atomic<bool> connected{false};
+  std::atomic<bool> errored{false};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connected = true;
+    if (state == base::LinkState::Error) errored = true;
+  });
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->low_latency_requests(), 1);
+  EXPECT_TRUE(connected.load());
+  EXPECT_FALSE(errored.load());
   serial->stop();
 }
 

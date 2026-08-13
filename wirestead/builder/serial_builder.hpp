@@ -56,6 +56,10 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   // Bytes each read fills. The TCP and UDS builders call the same knob
   // read_buffer_size(); serial named it read_chunk before those existed.
   SerialBuilder& read_chunk(size_t bytes);
+  // Ask the driver to deliver received bytes without waiting out its own
+  // buffering timer (Linux ASYNC_LOW_LATENCY). On by default; see
+  // SerialConfig::low_latency.
+  SerialBuilder& low_latency(bool enable = true);
   SerialBuilder& reopen_on_error(bool enable = true);
   SerialBuilder& retry_interval(std::chrono::milliseconds interval);
   SerialBuilder& independent_context(bool use_independent = true);
@@ -86,6 +90,8 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   bool reopen_on_error_set_{false};
   size_t read_chunk_{base::constants::DEFAULT_READ_BUFFER_SIZE};
   bool read_chunk_set_{false};
+  bool low_latency_{true};
+  bool low_latency_set_{false};
 };
 
 using SerialBuilderDefault = SerialBuilder;

@@ -48,6 +48,13 @@ class WIRESTEAD_API SerialPortInterface {
   virtual void set_option(const net::serial_port_base::parity& option, boost::system::error_code& ec) = 0;
   virtual void set_option(const net::serial_port_base::flow_control& option, boost::system::error_code& ec) = 0;
 
+  // Ask the driver to stop batching received bytes behind its own timer.
+  // Returns whether the request took effect. Not an error when it does not -
+  // only some drivers (notably USB serial) have such a timer to disable, so
+  // the caller logs the outcome and carries on. Defaults to "unsupported" so
+  // test doubles inherit it for free.
+  virtual bool set_low_latency() { return false; }
+
   virtual void async_read_some(const net::mutable_buffer& buffer,
                                std::function<void(const boost::system::error_code&, std::size_t)> handler) = 0;
   virtual void async_write(const net::const_buffer& buffer,

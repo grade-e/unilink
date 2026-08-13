@@ -19,6 +19,11 @@
 #include "wirestead/base/visibility.hpp"
 #include "wirestead/interface/iserial_port.hpp"
 
+#ifdef __linux__
+#include <linux/serial.h>
+#include <sys/ioctl.h>
+#endif
+
 namespace wirestead {
 namespace transport {
 
@@ -46,6 +51,22 @@ class WIRESTEAD_API BoostSerialPort : public interface::SerialPortInterface {
   }
   void set_option(const net::serial_port_base::flow_control& option, boost::system::error_code& ec) override {
     port_.set_option(option, ec);
+  }
+
+  // Linux only. TIOCGSERIAL fails with ENOTTY on drivers that have no latency
+  // timer to clear, which is the common case for native UARTs and CDC-ACM, so
+  // the caller treats false as "nothing to do" rather than as a failure.
+  bool set_low_latency() override {
+#ifdef __linux__
+    struct serial_struct info;
+    const int fd = port_.native_handle();
+    if (::ioctl(fd, TIOCGSERIAL, &info) != 0) return false;
+    if (info.flags & ASYNC_LOW_LATENCY) return true;
+    info.flags |= ASYNC_LOW_LATENCY;
+    return ::ioctl(fd, TIOCSSERIAL, &info) == 0;
+#else
+    return false;
+#endif
   }
 
   void async_read_some(const net::mutable_buffer& buffer,

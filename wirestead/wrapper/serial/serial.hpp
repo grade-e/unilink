@@ -109,6 +109,10 @@ class WIRESTEAD_API Serial : public ChannelInterface {
   // Bytes each read fills, the serial counterpart of read_buffer_size() on the
   // TCP and UDS wrappers. Clamped to [MIN_READ_BUFFER_SIZE, MAX_READ_BUFFER_SIZE].
   Serial& read_chunk(size_t bytes);
+  // Ask the driver to deliver received bytes without waiting out its own
+  // buffering timer (Linux ASYNC_LOW_LATENCY). On by default; see
+  // SerialConfig::low_latency for what it does and does not cover.
+  Serial& low_latency(bool enable = true);
   Serial& reopen_on_error(bool enable);
   Serial& retry_interval(std::chrono::milliseconds interval);
   Serial& backpressure_threshold(size_t threshold);

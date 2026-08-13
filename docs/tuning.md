@@ -35,6 +35,30 @@ The ceiling is far below `MAX_SOCKET_BUFFER_SIZE` on purpose: this buffer is
 read buffer against the default 1024 connection limit is a gigabyte of
 userspace buffers before any payload.
 
+## Serial low-latency mode
+
+USB serial adapters buffer received bytes behind a driver timer before handing
+them up. An FTDI ships with that timer at **16 ms**, so a 1 ms packet at 115200
+baud can still reach your callback 16 ms late no matter what the rest of the
+stack does. `low_latency` clears it (`ASYNC_LOW_LATENCY` on Linux) and is **on
+by default**.
+
+```cpp
+auto port = wirestead::serial("/dev/ttyUSB0", 115200)
+                .low_latency(false)  // leave the driver's timer alone
+                .on_data([](const wirestead::MessageContext& ctx) { /* ... */ })
+                .build();
+```
+
+Best effort, and deliberately so: drivers with no such timer — native UARTs,
+CDC-ACM — refuse the request, the port opens normally, and the refusal is
+logged at debug level. Linux only; elsewhere the setting is a no-op.
+
+Turn it off to trade latency back for fewer wakeups on a high-rate stream where
+arrival time does not matter. Unlike everything else on this page, this one is
+worth setting without a measurement first: nothing else in the library recovers
+16 ms.
+
 ## Memory pool prefill
 
 `MemoryPool(initial_pool_size, max_pool_size)` pre-allocates

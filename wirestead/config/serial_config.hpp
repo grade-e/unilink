@@ -37,6 +37,19 @@ struct SerialConfig {
   enum class Flow { None, Software, Hardware } flow = Flow::None;
 
   size_t read_chunk = base::constants::DEFAULT_READ_BUFFER_SIZE;
+
+  // Ask the kernel driver to hand bytes up as soon as they arrive instead of
+  // waiting out its buffering timer. On Linux this is ASYNC_LOW_LATENCY, and
+  // it matters most on USB serial adapters: an FTDI defaults to a 16 ms
+  // latency timer, so a 1 ms packet at 115200 baud can still reach the
+  // callback 16 ms late — enough to break a control loop on its own.
+  //
+  // Best effort by design. Drivers that have no such timer (CDC-ACM, most
+  // native UARTs) reject the request, and that is not an error: the port opens
+  // and runs normally either way. Set false to leave the driver's default
+  // alone, which trades latency for fewer wakeups.
+  bool low_latency = true;
+
   bool reopen_on_error = true;  // Attempt to reopen on device disconnection/error
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
   base::constants::BackpressureStrategy backpressure_strategy = base::constants::BackpressureStrategy::Reliable;
