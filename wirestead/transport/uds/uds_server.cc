@@ -34,6 +34,7 @@
 #include "wirestead/base/platform.hpp"
 #include "wirestead/builder/auto_initializer.hpp"
 #include "wirestead/concurrency/io_context_manager.hpp"
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/concurrency/thread_safe_state.hpp"
 #include "wirestead/diagnostics/logger.hpp"
 #include "wirestead/diagnostics/runtime_stats_counter.hpp"
@@ -394,6 +395,7 @@ void UdsServer::start() {
     impl_->work_guard_ =
         std::make_unique<net::executor_work_guard<net::io_context::executor_type>>(net::make_work_guard(*impl_->ioc_));
     impl_->ioc_thread_ = std::jthread([impl = impl_.get()](std::stop_token st) {
+      wirestead::concurrency::run_io_thread_init();
       try {
         std::stop_callback cb(st, [impl] { impl->ioc_->stop(); });
         impl->ioc_->run();

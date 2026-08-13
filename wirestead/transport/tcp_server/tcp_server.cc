@@ -30,6 +30,7 @@
 #include <unordered_map>
 
 #include "wirestead/concurrency/io_context_manager.hpp"
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/concurrency/thread_safe_state.hpp"
 #include "wirestead/diagnostics/exceptions.hpp"
 #include "wirestead/diagnostics/logger.hpp"
@@ -650,6 +651,7 @@ void TcpServer::start() {
     impl->work_guard_ =
         std::make_unique<net::executor_work_guard<net::io_context::executor_type>>(impl->ioc_.get_executor());
     impl->ioc_thread_ = std::jthread([impl](std::stop_token st) {
+      wirestead::concurrency::run_io_thread_init();
       try {
         std::stop_callback cb(st, [impl] { impl->ioc_.stop(); });
         impl->ioc_.run();

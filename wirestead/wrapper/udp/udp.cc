@@ -16,6 +16,8 @@
 
 #include "wirestead/wrapper/udp/udp.hpp"
 
+#include "wirestead/concurrency/io_thread_hook.hpp"
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #pragma GCC diagnostic ignored "-Wconversion"
@@ -186,6 +188,7 @@ struct UdpClient::Impl : public std::enable_shared_from_this<Impl> {
       work_guard = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
           boost::asio::make_work_guard(*external_ioc));
       external_thread = std::thread([this, ioc = external_ioc]() {
+        wirestead::concurrency::run_io_thread_init();
         try {
           ioc->run();
         } catch (...) {

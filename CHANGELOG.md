@@ -39,6 +39,28 @@ and ABI policy.
   at the default TTL of 1 - one hop, so the local subnet, which is where a
   robot's sensors are.
 
+- `wirestead::concurrency::set_io_thread_init()`, a callback run on every io
+  thread the library starts, before that thread services any work.
+
+  ```cpp
+  wirestead::concurrency::set_io_thread_init([] {
+    pthread_setname_np(pthread_self(), "wirestead-io");
+    sched_param p{.sched_priority = 20};
+    pthread_setschedparam(pthread_self(), SCHED_FIFO, &p);
+  });
+  ```
+
+  The library creates its own threads, so a deployment needing a real-time
+  policy, a CPU affinity mask, or a readable thread name had nothing to apply
+  it to. The hook runs on the new thread, which is what those APIs require.
+
+  Process-wide rather than per channel: thread policy is a property of the
+  deployment, and a per-config field would have to be threaded through six
+  transports to say the same thing. Install it before starting any channel; it
+  does not reach threads already running. Exceptions escaping the hook are
+  caught, since a thread entry point would otherwise terminate the process.
+  See `docs/tuning.md`.
+
 - Optional TLS for the TCP **client**, behind the same `-DWIRESTEAD_ENABLE_TLS=ON`.
   Two wirestead services can now talk to each other encrypted; before this a
   wirestead client could only reach a wirestead TLS server by not being a

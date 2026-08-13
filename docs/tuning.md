@@ -83,6 +83,39 @@ would hold a bidirectional timer open forever. Expiry runs the same path as a
 read error, so `reopen_on_error` decides whether the port is reopened or the
 link goes to `Error`.
 
+## Io thread policy
+
+The library starts its own threads, so nothing else can reach them: a
+deployment that wants `SCHED_FIFO`, a CPU affinity mask, or just a readable
+name in `top` had no handle to apply it to. `set_io_thread_init()` installs a
+callback that runs on each io thread the library starts, before that thread
+runs any work — which is where `pthread_self()`-based APIs need to be called
+from.
+
+```cpp
+wirestead::concurrency::set_io_thread_init([] {
+  pthread_setname_np(pthread_self(), "wirestead-io");
+  sched_param p{.sched_priority = 20};
+  pthread_setschedparam(pthread_self(), SCHED_FIFO, &p);
+});
+```
+
+Process-wide on purpose. Thread policy belongs to the deployment, not to one
+connection, and a per-channel field would have to be threaded through six
+transports to say the same thing.
+
+Set it before starting any channel — it does not reach threads already
+running. The library never undoes what the hook did, so a raised priority
+outlives the channel that triggered it when the thread is a shared one.
+Blocking in the hook blocks that channel's io; an exception escaping it is
+caught, because the alternative at a thread entry point is process
+termination.
+
+Read the table under [What tuning will not fix](#what-tuning-will-not-fix)
+first if the goal is throughput rather than scheduling determinism. Raising
+priority does not make a channel faster; it makes it preempt other work, which
+is only what you want on a robot with a deadline.
+
 ## Memory pool prefill
 
 `MemoryPool(initial_pool_size, max_pool_size)` pre-allocates

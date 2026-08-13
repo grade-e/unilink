@@ -30,6 +30,7 @@
 
 #include "wirestead/base/common.hpp"
 #include "wirestead/base/constants.hpp"
+#include "wirestead/concurrency/io_thread_hook.hpp"
 #include "wirestead/config/tcp_client_config.hpp"
 #include "wirestead/diagnostics/error_mapping.hpp"
 #include "wirestead/factory/channel_factory.hpp"
@@ -226,6 +227,7 @@ struct TcpClient::Impl : public std::enable_shared_from_this<Impl> {
       work_guard_ = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
           external_ioc_->get_executor());
       external_thread_ = std::jthread([ioc = external_ioc_](std::stop_token st) {
+        wirestead::concurrency::run_io_thread_init();
         try {
           std::stop_callback cb(st, [ioc] { ioc->stop(); });
           ioc->run();

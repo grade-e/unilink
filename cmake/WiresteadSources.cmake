@@ -12,6 +12,7 @@ set(WIRESTEAD_SOURCES
     wirestead/builder/udp_builder.cc
     wirestead/builder/unified_builder.cc
     wirestead/concurrency/io_context_manager.cc
+    wirestead/concurrency/io_thread_hook.cc
     wirestead/config/config_factory.cc
     wirestead/config/config_manager.cc
     wirestead/diagnostics/error_handler.cc
@@ -66,6 +67,7 @@ set(WIRESTEAD_HEADERS
     wirestead/builder/uds_builder.hpp
     wirestead/builder/unified_builder.hpp
     wirestead/concurrency/io_context_manager.hpp
+    wirestead/concurrency/io_thread_hook.hpp
     wirestead/concurrency/thread_safe_state.hpp
     wirestead/config/config_factory.hpp
     wirestead/config/config_manager.hpp

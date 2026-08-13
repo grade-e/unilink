@@ -16,6 +16,8 @@
 
 #include "wirestead/transport/tcp_client/tcp_client.hpp"
 
+#include "wirestead/concurrency/io_thread_hook.hpp"
+
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #endif
@@ -299,6 +301,7 @@ void TcpClient::start() {
     impl_->work_guard_ =
         std::make_unique<net::executor_work_guard<net::io_context::executor_type>>(impl_->ioc_->get_executor());
     impl_->ioc_thread_ = std::jthread([ioc = impl_->owned_ioc_](std::stop_token st) {
+      wirestead::concurrency::run_io_thread_init();
       try {
         std::stop_callback cb(st, [ioc] { ioc->stop(); });
         ioc->run();
