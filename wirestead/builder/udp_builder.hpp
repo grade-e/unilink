@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -60,6 +61,15 @@ class WIRESTEAD_API UdpClientBuilder : public BuilderInterface<wrapper::UdpClien
   UdpClientBuilder& remote(const std::string& host, uint16_t port) { return remote_endpoint(host, port); }
   UdpClientBuilder& broadcast(bool enable = true);
   UdpClientBuilder& reuse_address(bool enable = true);
+  // Join a multicast group after binding, so this socket receives datagrams
+  // addressed to it. `interface_address` picks the NIC by its local IPv4
+  // address; leave it empty to let the kernel choose, which is only reliable
+  // on a host with one interface. See UdpConfig::multicast_group.
+  //
+  // Multicast receivers usually want reuse_address(true) as well, so more than
+  // one process on the host can listen to the same group and port.
+  UdpClientBuilder& multicast_group(const std::string& group, const std::string& interface_address = "");
+
   UdpClientBuilder& independent_context(bool use_independent = true);
   UdpClientBuilder& send_buffer_size(size_t bytes);
   UdpClientBuilder& receive_buffer_size(size_t bytes);
@@ -73,6 +83,9 @@ class WIRESTEAD_API UdpClientBuilder : public BuilderInterface<wrapper::UdpClien
   bool independent_context_;
   bool enable_broadcast_;
   bool reuse_address_;
+  std::optional<std::string> multicast_group_;
+  std::optional<std::string> multicast_interface_;
+
   size_t send_buffer_size_;
   size_t receive_buffer_size_;
 };
@@ -103,6 +116,15 @@ class WIRESTEAD_API UdpServerBuilder : public BuilderInterface<wrapper::UdpServe
   UdpServerBuilder& max_clients(uint32_t max);
   UdpServerBuilder& broadcast(bool enable = true);
   UdpServerBuilder& reuse_address(bool enable = true);
+  // Join a multicast group after binding, so this socket receives datagrams
+  // addressed to it. `interface_address` picks the NIC by its local IPv4
+  // address; leave it empty to let the kernel choose, which is only reliable
+  // on a host with one interface. See UdpConfig::multicast_group.
+  //
+  // Multicast receivers usually want reuse_address(true) as well, so more than
+  // one process on the host can listen to the same group and port.
+  UdpServerBuilder& multicast_group(const std::string& group, const std::string& interface_address = "");
+
   UdpServerBuilder& independent_context(bool use_independent = true);
   /**
    * @brief Configure application-level idle timeout for virtual sessions.
@@ -122,6 +144,9 @@ class WIRESTEAD_API UdpServerBuilder : public BuilderInterface<wrapper::UdpServe
   bool independent_context_;
   bool enable_broadcast_;
   bool reuse_address_;
+  std::optional<std::string> multicast_group_;
+  std::optional<std::string> multicast_interface_;
+
   uint32_t max_clients_ = 0;
   bool client_limit_enabled_ = false;
   std::chrono::milliseconds idle_timeout_{0};

@@ -234,6 +234,29 @@ struct UdpChannel::Impl {
       return;
     }
 
+    // After bind, which is what a group join attaches to. Fatal on failure:
+    // a receiver that silently did not join looks identical to a sensor that
+    // stopped sending, and that is the exact confusion this whole feature is
+    // meant to remove.
+    if (cfg_.multicast_group) {
+      const auto group = net::ip::make_address(*cfg_.multicast_group, ec);
+      if (!ec) {
+        if (group.is_v4() && cfg_.multicast_interface) {
+          const auto iface = net::ip::make_address_v4(*cfg_.multicast_interface, ec);
+          if (!ec) socket_.set_option(net::ip::multicast::join_group(group.to_v4(), iface), ec);
+        } else {
+          socket_.set_option(net::ip::multicast::join_group(group), ec);
+        }
+      }
+      if (ec) {
+        std::string msg = fmt::format("Failed to join multicast group {}: {}", *cfg_.multicast_group, ec.message());
+        WIRESTEAD_LOG_ERROR("udp", "multicast", msg);
+        transition_to(LinkState::Error, ec, "multicast", msg);
+        return;
+      }
+      WIRESTEAD_LOG_INFO("udp", "multicast", fmt::format("Joined multicast group {}", *cfg_.multicast_group));
+    }
+
     // Set large OS buffers for UDP to prevent drops unless explicitly configured.
     const int automatic_buf_size = std::max(static_cast<int>(bp_high_), 4 * 1024 * 1024);
     const int recv_buf_size =

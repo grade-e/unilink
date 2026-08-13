@@ -390,6 +390,30 @@ TEST_F(ConfigTest, UdpConfigAddressFormatIsValidated) {
   EXPECT_TRUE(cfg.is_valid()) << "IPv6 bind address should be valid";
 }
 
+// A unicast address in multicast_group is rejected here rather than at the
+// setsockopt, where the error names neither the setting nor the address.
+TEST_F(ConfigTest, UdpMulticastGroupMustBeAMulticastAddress) {
+  UdpConfig cfg;
+
+  cfg.multicast_group = "239.255.0.1";
+  EXPECT_TRUE(cfg.is_valid());
+  cfg.multicast_group = "ff02::1";
+  EXPECT_TRUE(cfg.is_valid()) << "IPv6 groups are ff00::/8";
+
+  cfg.multicast_group = "127.0.0.1";
+  EXPECT_FALSE(cfg.is_valid()) << "a unicast address is not a group";
+  cfg.multicast_group = "223.255.255.255";
+  EXPECT_FALSE(cfg.is_valid()) << "just below 224.0.0.0/4";
+  cfg.multicast_group = "multicast.example.com";
+  EXPECT_FALSE(cfg.is_valid()) << "no hostname resolution here";
+
+  cfg.multicast_group = "239.255.0.1";
+  cfg.multicast_interface = "192.168.1.10";
+  EXPECT_TRUE(cfg.is_valid());
+  cfg.multicast_interface = "eth0";
+  EXPECT_FALSE(cfg.is_valid()) << "the interface is named by its IPv4 address";
+}
+
 TEST(SocketTuningConfigTest, SocketBufferConfigValidationAndClamping) {
   TcpClientConfig tcp_client;
   EXPECT_TRUE(tcp_client.tcp_no_delay);
