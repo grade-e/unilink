@@ -46,6 +46,7 @@ set(WIRESTEAD_SOURCES
     wirestead/builder/uds_builder.cc
     wirestead/framer/line_framer.cc
     wirestead/framer/packet_framer.cc
+    wirestead/framer/length_prefix_framer.cc
 )
 
 set(WIRESTEAD_HEADERS
@@ -58,6 +59,7 @@ set(WIRESTEAD_HEADERS
     wirestead/framer/iframer.hpp
     wirestead/framer/line_framer.hpp
     wirestead/framer/packet_framer.hpp
+    wirestead/framer/length_prefix_framer.hpp
     wirestead/builder/auto_initializer.hpp
     wirestead/builder/ibuilder.hpp
     wirestead/builder/serial_builder.hpp

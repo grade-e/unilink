@@ -271,7 +271,9 @@ wirestead_add_unit_gtest(
 )
 
 # Framer tests (separate executables)
-foreach(test_file test_line_framer.cc test_packet_framer.cc)
+foreach(test_file test_line_framer.cc test_packet_framer.cc
+                  test_length_prefix_framer.cc
+)
   get_filename_component(test_name ${test_file} NAME_WE)
   wirestead_add_unit_gtest(
     run_unit_${test_name} ${CMAKE_CURRENT_SOURCE_DIR}/framer/${test_file}

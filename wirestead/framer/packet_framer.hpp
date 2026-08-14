@@ -40,13 +40,13 @@ namespace framer {
  *
  * That makes this framer a fit for protocols with a reserved delimiter (a
  * text-ish or escaped wire format), and a poor fit for the common
- * length-prefixed binary layout. For the latter, implement IFramer and pass it
- * with `framer()` on the builder - the length field tells you exactly how many
- * bytes to collect, so no byte value is ever special:
+ * length-prefixed binary layout. Use LengthPrefixFramer for that - the length
+ * field says exactly how many bytes to collect, so no byte value is ever
+ * special:
  *
  * ```cpp
- * auto ch = wirestead::serial("/dev/ttyUSB0", 115200)
- *               .framer([] { return std::make_unique<MyLengthPrefixedFramer>(); })
+ * auto ch = wirestead::tcp_client("127.0.0.1", 9000)
+ *               .use_length_prefix_framer(4)
  *               .on_message(...)
  *               .build();
  * ```
