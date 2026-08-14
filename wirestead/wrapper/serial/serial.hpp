@@ -113,6 +113,17 @@ class WIRESTEAD_API Serial : public ChannelInterface {
   // buffering timer (Linux ASYNC_LOW_LATENCY). On by default; see
   // SerialConfig::low_latency for what it does and does not cover.
   Serial& low_latency(bool enable = true);
+  // Half-duplex RS-485: the driver drives the transceiver's direction pin
+  // around each write. Delays are milliseconds and default to 0, which suits
+  // most transceivers; slow ones need a millisecond or two. See
+  // SerialConfig::Rs485.
+  Serial& rs485(bool rts_on_send = true, bool rx_during_tx = false, unsigned delay_before_ms = 0,
+                unsigned delay_after_ms = 0);
+  // Assert or clear DTR / RTS at open. Unset means the driver's default is
+  // left alone, which is not the same as driving the line low - an Arduino
+  // reboots on an asserted DTR.
+  Serial& dtr(bool assert_line);
+  Serial& rts(bool assert_line);
   Serial& reopen_on_error(bool enable);
   // Reopen the port when no data has been received for this long. Off by
   // default; see SerialConfig::rx_idle_timeout_ms for why it watches receives

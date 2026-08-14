@@ -80,6 +80,38 @@ report an age from its previous life.
 Serial additionally offers an active version below, because there a concrete
 recovery exists.
 
+## RS-485 and modem control lines
+
+Half-duplex RS-485 is the wiring behind Dynamixel servos, Modbus RTU and much
+industrial sensing. The transceiver's direction pin has to be driven around
+each write, at an instant userspace cannot hit, so the kernel driver does it
+and `rs485()` turns that on.
+
+```cpp
+auto bus = wirestead::serial("/dev/ttyUSB0", 1000000)
+               .rs485()          // rts_on_send=true, rx_during_tx=false
+               .low_latency()
+               .build();
+```
+
+The delays are milliseconds and default to 0, which suits most transceivers.
+A slow one needs a millisecond or two either side, and nothing but the hardware
+in front of you can say which — that is what the arguments are for.
+
+Unlike the other settings here, a refusal is logged as a **warning**: adapters
+that switch direction in hardware refuse it legitimately, but so does a plain
+UART, and running a shared bus in plain UART mode makes every write collide.
+That presents as garbage from the device rather than as a configuration
+problem, which is why it is worth a line in the log.
+
+`dtr()` and `rts()` drive the modem control lines at open. Not calling them
+leaves the driver's default alone, which is **not** the same as passing
+`false`: an Arduino reboots when DTR is asserted at open, so a driver that must
+not reset the board calls `dtr(false)` explicitly.
+
+Linux only (`TIOCSRS485`); DTR/RTS also work on macOS. Elsewhere both are
+no-ops.
+
 ## Serial receive watchdog
 
 A device that stops streaming without erroring leaves a healthy open port and a

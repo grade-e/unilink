@@ -87,6 +87,12 @@ std::unique_ptr<wrapper::Serial> SerialBuilder::build() {
   if (reopen_on_error_set_) serial->reopen_on_error(reopen_on_error_);
   if (read_chunk_set_) serial->read_chunk(read_chunk_);
   if (low_latency_set_) serial->low_latency(low_latency_);
+  if (rs485_.enabled) {
+    serial->rs485(rs485_.rts_on_send, rs485_.rx_during_tx, rs485_.delay_rts_before_send_ms,
+                  rs485_.delay_rts_after_send_ms);
+  }
+  if (dtr_) serial->dtr(*dtr_);
+  if (rts_) serial->rts(*rts_);
   if (rx_idle_timeout_set_) serial->rx_idle_timeout(rx_idle_timeout_);
   if (retry_interval_set_) serial->retry_interval(std::chrono::milliseconds(retry_interval_ms_));
 
@@ -180,6 +186,26 @@ SerialBuilder& SerialBuilder::read_chunk(size_t bytes) {
 SerialBuilder& SerialBuilder::low_latency(bool enable) {
   low_latency_ = enable;
   low_latency_set_ = true;
+  return *this;
+}
+
+SerialBuilder& SerialBuilder::rs485(bool rts_on_send, bool rx_during_tx, unsigned delay_before_ms,
+                                    unsigned delay_after_ms) {
+  rs485_.enabled = true;
+  rs485_.rts_on_send = rts_on_send;
+  rs485_.rx_during_tx = rx_during_tx;
+  rs485_.delay_rts_before_send_ms = delay_before_ms;
+  rs485_.delay_rts_after_send_ms = delay_after_ms;
+  return *this;
+}
+
+SerialBuilder& SerialBuilder::dtr(bool assert_line) {
+  dtr_ = assert_line;
+  return *this;
+}
+
+SerialBuilder& SerialBuilder::rts(bool assert_line) {
+  rts_ = assert_line;
   return *this;
 }
 

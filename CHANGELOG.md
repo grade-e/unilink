@@ -58,6 +58,30 @@ and ABI policy.
   line you attach to mid-stream, or a protocol carrying a sync word, still
   needs a custom `IFramer`.
 
+- Serial RS-485 and modem control lines: `rs485()`, `dtr()`, `rts()`.
+
+  ```cpp
+  auto bus = wirestead::serial("/dev/ttyUSB0", 1000000).rs485().build();
+  ```
+
+  Half-duplex RS-485 is what Dynamixel servos, Modbus RTU and much industrial
+  sensing run on, and the transceiver's direction pin has to be driven around
+  each write at an instant userspace cannot hit - so the kernel driver does it
+  (`TIOCSRS485`). Nothing previously exposed this, or the port's native handle,
+  so those devices could not be driven at all.
+
+  RTS polarity, full-duplex mode and the pre/post delays are all settable; the
+  delays default to 0, which suits most transceivers, and exist because slow
+  ones need a millisecond or two that no default can guess.
+
+  A refusal is logged at warning level rather than debug: an adapter that
+  switches direction in hardware refuses legitimately, but so does a plain
+  UART, and a shared bus running in plain UART mode collides on every write.
+
+  `dtr()`/`rts()` are engaged only when called - leaving one unset keeps the
+  driver's default, which differs from passing `false`, since an Arduino
+  reboots on an asserted DTR at open.
+
 - UDP multicast receive: `multicast_group(group, interface_address = "")` on
   both UDP builders joins the group after binding.
 

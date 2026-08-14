@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "wirestead/base/constants.hpp"
@@ -49,6 +50,38 @@ struct SerialConfig {
   // and runs normally either way. Set false to leave the driver's default
   // alone, which trades latency for fewer wakeups.
   bool low_latency = true;
+
+  // Half-duplex RS-485, the wiring behind Dynamixel servos, Modbus RTU and a
+  // good deal of industrial sensing. The driver has to drive the transceiver's
+  // direction pin around each write, which is not something a caller can do
+  // from userspace at the right instant - hence a setting rather than advice.
+  //
+  // Linux only (TIOCSRS485). Adapters that switch direction in hardware need
+  // none of this and will refuse it; that refusal is not an error.
+  struct Rs485 {
+    bool enabled = false;
+    // Logical level RTS takes while transmitting. The usual wiring wants it
+    // high to send, but the opposite exists and produces a link that looks
+    // dead in one direction only.
+    bool rts_on_send = true;
+    // Whether the receiver stays on during transmit. Off for true half duplex,
+    // which is what stops a device hearing its own echo.
+    bool rx_during_tx = false;
+    // Milliseconds the driver holds the direction pin either side of the
+    // frame. Both default to 0 because most transceivers need nothing; slow
+    // ones need a millisecond or two, and no model can guess which - this is
+    // the knob for the hardware in front of you.
+    unsigned delay_rts_before_send_ms = 0;
+    unsigned delay_rts_after_send_ms = 0;
+  } rs485;
+
+  // Modem control lines, engaged only when set. std::nullopt means "leave the
+  // driver's default alone", which is a different request from "drive it low":
+  // an Arduino resets when DTR is asserted at open, so a driver that must not
+  // reboot the board sets dtr=false explicitly, while one that has no opinion
+  // leaves it unset.
+  std::optional<bool> dtr;
+  std::optional<bool> rts;
 
   bool reopen_on_error = true;  // Attempt to reopen on device disconnection/error
 

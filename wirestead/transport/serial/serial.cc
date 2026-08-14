@@ -319,6 +319,27 @@ struct Serial::Impl {
       return;
     }
 
+    // RS-485 before the first read and before anything is written: the very
+    // first frame out has to be sent with the direction pin already under the
+    // driver's control, or it goes out with the transceiver still in receive.
+    //
+    // Unlike low_latency, a refusal here is worth a warning rather than a
+    // debug line. Asking for RS-485 and silently running in plain UART mode
+    // means every write collides on a shared bus, which presents as garbage
+    // from the device rather than as a configuration problem.
+    if (cfg_.rs485.enabled &&
+        !port_->set_rs485(cfg_.rs485.rts_on_send, cfg_.rs485.rx_during_tx, cfg_.rs485.delay_rts_before_send_ms,
+                          cfg_.rs485.delay_rts_after_send_ms)) {
+      WIRESTEAD_LOG_WARNING("serial", "configure",
+                            fmt::format("RS-485 mode was requested but {} does not support it; the adapter must switch "
+                                        "direction in hardware or the bus will collide",
+                                        cfg_.device));
+    }
+
+    if ((cfg_.dtr || cfg_.rts) && !port_->set_modem_lines(cfg_.dtr, cfg_.rts)) {
+      WIRESTEAD_LOG_WARNING("serial", "configure", fmt::format("Could not set DTR/RTS on {}", cfg_.device));
+    }
+
     // Best effort, after the line settings and before the first read: a driver
     // without a latency timer just says no, and the port is fine either way.
     if (cfg_.low_latency && !port_->set_low_latency()) {

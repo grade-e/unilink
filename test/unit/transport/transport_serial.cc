@@ -72,6 +72,22 @@ class FakeSerialPort : public interface::SerialPortInterface {
     return low_latency_supported_;
   }
 
+  bool set_rs485(bool rts_on_send, bool rx_during_tx, unsigned delay_before_ms, unsigned delay_after_ms) override {
+    ++rs485_requests_;
+    rs485_rts_on_send_ = rts_on_send;
+    rs485_rx_during_tx_ = rx_during_tx;
+    rs485_delay_before_ = delay_before_ms;
+    rs485_delay_after_ = delay_after_ms;
+    return rs485_supported_;
+  }
+
+  bool set_modem_lines(std::optional<bool> dtr, std::optional<bool> rts) override {
+    ++modem_requests_;
+    modem_dtr_ = dtr;
+    modem_rts_ = rts;
+    return true;
+  }
+
   void async_read_some(const boost::asio::mutable_buffer&,
                        std::function<void(const boost::system::error_code&, std::size_t)> handler) override {
     read_handler_ = std::move(handler);
@@ -100,6 +116,15 @@ class FakeSerialPort : public interface::SerialPortInterface {
   int write_count() const { return write_count_; }
   void set_low_latency_supported(bool supported) { low_latency_supported_ = supported; }
   int low_latency_requests() const { return low_latency_requests_; }
+  void set_rs485_supported(bool supported) { rs485_supported_ = supported; }
+  int rs485_requests() const { return rs485_requests_; }
+  bool rs485_rts_on_send() const { return rs485_rts_on_send_; }
+  bool rs485_rx_during_tx() const { return rs485_rx_during_tx_; }
+  unsigned rs485_delay_before() const { return rs485_delay_before_; }
+  unsigned rs485_delay_after() const { return rs485_delay_after_; }
+  int modem_requests() const { return modem_requests_; }
+  std::optional<bool> modem_dtr() const { return modem_dtr_; }
+  std::optional<bool> modem_rts() const { return modem_rts_; }
 
   void complete_pending_write(const boost::system::error_code& ec = {}) {
     if (!pending_write_handler_) return;
@@ -135,6 +160,15 @@ class FakeSerialPort : public interface::SerialPortInterface {
   int write_count_{0};
   bool low_latency_supported_{true};
   int low_latency_requests_{0};
+  bool rs485_supported_{true};
+  int rs485_requests_{0};
+  bool rs485_rts_on_send_{false};
+  bool rs485_rx_during_tx_{false};
+  unsigned rs485_delay_before_{0};
+  unsigned rs485_delay_after_{0};
+  int modem_requests_{0};
+  std::optional<bool> modem_dtr_;
+  std::optional<bool> modem_rts_;
   std::function<void(const boost::system::error_code&, std::size_t)> read_handler_;
   std::function<void(const boost::system::error_code&, std::size_t)> pending_write_handler_;
   std::optional<std::size_t> pending_write_size_;
@@ -334,6 +368,112 @@ TEST(TransportSerialTest, ReceivedDataRearmsTheRxIdleTimeout) {
   // transport alive until ~io_context destroys the handler - which runs
   // perform_cleanup(), and so the state callback, after the locals it
   // captures are gone. Drain here instead.
+  ioc.run_for(50ms);
+}
+
+// RS-485 is off unless asked for, and when asked for the settings must reach
+// the driver verbatim - a wrong RTS polarity produces a link that looks dead
+// in one direction only, which is near-impossible to diagnose from the outside.
+TEST(TransportSerialTest, Rs485SettingsReachTheDriver) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rs485.enabled = true;
+  cfg.rs485.rts_on_send = false;
+  cfg.rs485.rx_during_tx = true;
+  cfg.rs485.delay_rts_before_send_ms = 2;
+  cfg.rs485.delay_rts_after_send_ms = 3;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->rs485_requests(), 1);
+  EXPECT_FALSE(port_raw->rs485_rts_on_send());
+  EXPECT_TRUE(port_raw->rs485_rx_during_tx());
+  EXPECT_EQ(port_raw->rs485_delay_before(), 2u);
+  EXPECT_EQ(port_raw->rs485_delay_after(), 3u);
+  serial->stop();
+  ioc.run_for(50ms);
+}
+
+TEST(TransportSerialTest, Rs485IsNotRequestedUnlessEnabled) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->rs485_requests(), 0);
+  serial->stop();
+  ioc.run_for(50ms);
+}
+
+// An adapter that switches direction in hardware refuses the ioctl. The port
+// must still come up - refusing is the normal answer on such hardware.
+TEST(TransportSerialTest, UnsupportedRs485StillConnects) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.rs485.enabled = true;
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  port_raw->set_rs485_supported(false);
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  std::atomic<bool> connected{false};
+  serial->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Connected) connected = true;
+  });
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->rs485_requests(), 1);
+  EXPECT_TRUE(connected.load());
+  serial->stop();
+  ioc.run_for(50ms);
+}
+
+// Leaving a line unset must not touch it: an Arduino reboots when DTR is
+// asserted at open, so "no opinion" and "drive it low" are different requests.
+TEST(TransportSerialTest, ModemLinesAreOnlyTouchedWhenSet) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->modem_requests(), 0) << "an unset line was still written";
+  serial->stop();
+  ioc.run_for(50ms);
+}
+
+TEST(TransportSerialTest, ModemLinesAreAppliedWhenSet) {
+  boost::asio::io_context ioc;
+  config::SerialConfig cfg;
+  cfg.dtr = false;  // the Arduino case: explicitly do not assert
+
+  auto port = std::make_unique<FakeSerialPort>(ioc);
+  auto* port_raw = port.get();
+  auto serial = Serial::create(cfg, std::move(port), ioc);
+
+  serial->start();
+  ioc.run_for(20ms);
+
+  EXPECT_EQ(port_raw->modem_requests(), 1);
+  ASSERT_TRUE(port_raw->modem_dtr().has_value());
+  EXPECT_FALSE(*port_raw->modem_dtr());
+  EXPECT_FALSE(port_raw->modem_rts().has_value()) << "RTS was written despite being unset";
+  serial->stop();
   ioc.run_for(50ms);
 }
 
