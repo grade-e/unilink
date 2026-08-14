@@ -30,6 +30,34 @@ and ABI policy.
   and the socket transports have no such recovery, which is why they get the
   signal rather than a policy.
 
+- `LengthPrefixFramer`, and `use_length_prefix_framer()` on every builder.
+
+  ```cpp
+  auto client = wirestead::tcp_client("127.0.0.1", 9000)
+                    .use_length_prefix_framer(4)   // 4-byte big-endian length
+                    .on_message(...)
+                    .build();
+  ```
+
+  The layout most binary protocols use, and the one `PacketFramer` cannot
+  carry: because the length says how many bytes to collect, no byte value is
+  special and the payload may contain anything. Until now the only answer was
+  to implement `IFramer` yourself, which the `PacketFramer` warning added last
+  release pointed at without providing.
+
+  Prefix width 1, 2 or 4 bytes; big or little endian; and the declared length
+  may count the prefix itself or not, since both conventions exist and picking
+  wrong shifts every frame by the prefix width.
+
+  A declared length above `max_length` is treated as corruption - the buffer is
+  dropped and framing restarts, rather than allocating whatever a bad or
+  hostile header asked for.
+
+  It requires the stream to start on a frame boundary, which is the normal case
+  for TCP and UDS. There is no sync word, so it cannot resynchronise: a serial
+  line you attach to mid-stream, or a protocol carrying a sync word, still
+  needs a custom `IFramer`.
+
 - UDP multicast receive: `multicast_group(group, interface_address = "")` on
   both UDP builders joins the group after binding.
 

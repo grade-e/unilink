@@ -27,6 +27,7 @@
 #include "wirestead/base/constants.hpp"
 #include "wirestead/base/visibility.hpp"
 #include "wirestead/framer/iframer.hpp"
+#include "wirestead/framer/length_prefix_framer.hpp"
 #include "wirestead/framer/line_framer.hpp"
 #include "wirestead/framer/packet_framer.hpp"
 #include "wirestead/memory/safe_span.hpp"
@@ -177,12 +178,32 @@ class BuilderInterface {
   }
 
   /**
+   * @brief Activate length-prefixed binary framing.
+   *
+   * The layout most binary protocols use, and the one use_packet_framer()
+   * cannot carry: the length says how many bytes to collect, so no byte value
+   * is special and the payload may contain anything.
+   *
+   * Requires the stream to start on a frame boundary - the normal case for TCP
+   * and UDS. See LengthPrefixFramer for what that rules out.
+   */
+  Derived& use_length_prefix_framer(size_t prefix_bytes = 2,
+                                    framer::LengthPrefixFramer::Endian endian = framer::LengthPrefixFramer::Endian::Big,
+                                    size_t max_length = 65536, bool length_includes_prefix = false) {
+    framer_factory_ = [prefix_bytes, endian, max_length, length_includes_prefix]() {
+      return std::make_unique<framer::LengthPrefixFramer>(prefix_bytes, endian, max_length, length_includes_prefix);
+    };
+    return static_cast<Derived&>(*this);
+  }
+
+  /**
    * @brief Activate binary packet framing between a start and end pattern.
    *
    * @warning Only safe when the payload cannot contain the end pattern - there
    * is no escaping, so the first occurrence ends the frame wherever it falls
-   * and a binary payload gets silently truncated. Use framer() with your own
-   * IFramer for length-prefixed protocols. See PacketFramer for the detail.
+   * and a binary payload gets silently truncated. Use
+   * use_length_prefix_framer() for length-prefixed protocols. See PacketFramer
+   * for the detail.
    */
   Derived& use_packet_framer(const std::vector<uint8_t>& start_pattern, const std::vector<uint8_t>& end_pattern,
                              size_t max_length) {
