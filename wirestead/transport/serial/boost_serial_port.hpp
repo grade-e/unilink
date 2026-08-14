@@ -23,6 +23,11 @@
 #include <linux/serial.h>
 #include <sys/ioctl.h>
 #endif
+#if defined(__APPLE__)
+#include <sys/ioctl.h>
+#endif
+
+#include <optional>
 
 namespace wirestead {
 namespace transport {
@@ -65,6 +70,59 @@ class WIRESTEAD_API BoostSerialPort : public interface::SerialPortInterface {
     info.flags |= ASYNC_LOW_LATENCY;
     return ::ioctl(fd, TIOCSSERIAL, &info) == 0;
 #else
+    return false;
+#endif
+  }
+
+  // Linux only. A driver with no RS-485 support answers ENOTTY, which the
+  // caller treats as "this adapter does the switching itself".
+  bool set_rs485(bool rts_on_send, bool rx_during_tx, unsigned delay_before_ms, unsigned delay_after_ms) override {
+#ifdef __linux__
+    struct serial_rs485 rs485 {};
+    const int fd = port_.native_handle();
+    // Read first: some drivers carry board-specific bits in flags that a
+    // blind write would clear.
+    if (::ioctl(fd, TIOCGRS485, &rs485) != 0) return false;
+    rs485.flags |= SER_RS485_ENABLED;
+    if (rts_on_send) {
+      rs485.flags |= SER_RS485_RTS_ON_SEND;
+      rs485.flags &= ~static_cast<decltype(rs485.flags)>(SER_RS485_RTS_AFTER_SEND);
+    } else {
+      rs485.flags &= ~static_cast<decltype(rs485.flags)>(SER_RS485_RTS_ON_SEND);
+      rs485.flags |= SER_RS485_RTS_AFTER_SEND;
+    }
+    if (rx_during_tx) {
+      rs485.flags |= SER_RS485_RX_DURING_TX;
+    } else {
+      rs485.flags &= ~static_cast<decltype(rs485.flags)>(SER_RS485_RX_DURING_TX);
+    }
+    rs485.delay_rts_before_send = delay_before_ms;
+    rs485.delay_rts_after_send = delay_after_ms;
+    return ::ioctl(fd, TIOCSRS485, &rs485) == 0;
+#else
+    (void)rts_on_send;
+    (void)rx_during_tx;
+    (void)delay_before_ms;
+    (void)delay_after_ms;
+    return false;
+#endif
+  }
+
+  bool set_modem_lines(std::optional<bool> dtr, std::optional<bool> rts) override {
+#if defined(__linux__) || defined(__APPLE__)
+    const int fd = port_.native_handle();
+    bool ok = true;
+    auto apply = [&](std::optional<bool> want, int bit) {
+      if (!want) return;
+      int lines = bit;
+      if (::ioctl(fd, *want ? TIOCMBIS : TIOCMBIC, &lines) != 0) ok = false;
+    };
+    apply(dtr, TIOCM_DTR);
+    apply(rts, TIOCM_RTS);
+    return ok;
+#else
+    (void)dtr;
+    (void)rts;
     return false;
 #endif
   }

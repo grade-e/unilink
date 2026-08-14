@@ -24,6 +24,7 @@
 #include <cctype>
 #include <iostream>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <stdexcept>
 #include <thread>
@@ -96,6 +97,9 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
   bool reopen_on_error = true;
   size_t read_chunk = base::constants::DEFAULT_READ_BUFFER_SIZE;
   bool low_latency = true;
+  config::SerialConfig::Rs485 rs485{};
+  std::optional<bool> dtr;
+  std::optional<bool> rts;
   std::chrono::milliseconds rx_idle_timeout{0};
   std::chrono::milliseconds retry_interval{base::constants::DEFAULT_RETRY_INTERVAL_MS};
   size_t backpressure_threshold = base::constants::DEFAULT_BACKPRESSURE_THRESHOLD;
@@ -604,6 +608,9 @@ struct Serial::Impl : public std::enable_shared_from_this<Impl> {
     config.reopen_on_error = reopen_on_error;
     config.read_chunk = read_chunk;
     config.low_latency = low_latency;
+    config.rs485 = rs485;
+    config.dtr = dtr;
+    config.rts = rts;
     config.rx_idle_timeout_ms = static_cast<unsigned>(rx_idle_timeout.count());
     config.backpressure_threshold = backpressure_threshold;
     config.backpressure_strategy = backpressure_strategy;
@@ -736,6 +743,28 @@ Serial& Serial::read_chunk(size_t bytes) {
 Serial& Serial::low_latency(bool enable) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->low_latency = enable;
+  return *this;
+}
+
+Serial& Serial::rs485(bool rts_on_send, bool rx_during_tx, unsigned delay_before_ms, unsigned delay_after_ms) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->rs485.enabled = true;
+  impl_->rs485.rts_on_send = rts_on_send;
+  impl_->rs485.rx_during_tx = rx_during_tx;
+  impl_->rs485.delay_rts_before_send_ms = delay_before_ms;
+  impl_->rs485.delay_rts_after_send_ms = delay_after_ms;
+  return *this;
+}
+
+Serial& Serial::dtr(bool assert_line) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->dtr = assert_line;
+  return *this;
+}
+
+Serial& Serial::rts(bool assert_line) {
+  std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
+  impl_->rts = assert_line;
   return *this;
 }
 

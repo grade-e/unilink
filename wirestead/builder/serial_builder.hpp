@@ -60,6 +60,13 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   // buffering timer (Linux ASYNC_LOW_LATENCY). On by default; see
   // SerialConfig::low_latency.
   SerialBuilder& low_latency(bool enable = true);
+  // Half-duplex RS-485. Delays are milliseconds; see SerialConfig::Rs485.
+  SerialBuilder& rs485(bool rts_on_send = true, bool rx_during_tx = false, unsigned delay_before_ms = 0,
+                       unsigned delay_after_ms = 0);
+  // Assert or clear DTR / RTS at open. Not calling these leaves the driver's
+  // default alone, which differs from passing false.
+  SerialBuilder& dtr(bool assert_line);
+  SerialBuilder& rts(bool assert_line);
   SerialBuilder& reopen_on_error(bool enable = true);
   // Reopen the port when no data has been received for this long. Off by
   // default; see SerialConfig::rx_idle_timeout_ms.
@@ -95,6 +102,9 @@ class WIRESTEAD_API SerialBuilder : public BuilderInterface<wrapper::Serial, Ser
   bool read_chunk_set_{false};
   bool low_latency_{true};
   bool low_latency_set_{false};
+  config::SerialConfig::Rs485 rs485_{};
+  std::optional<bool> dtr_;
+  std::optional<bool> rts_;
   std::chrono::milliseconds rx_idle_timeout_{0};
   bool rx_idle_timeout_set_{false};
 };
