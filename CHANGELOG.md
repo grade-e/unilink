@@ -10,6 +10,26 @@ and ABI policy.
 
 ### Added
 
+- `RuntimeStats::last_receive_age_ms`, milliseconds since bytes last arrived,
+  on every transport.
+
+  ```cpp
+  auto s = channel->stats();
+  if (s.last_receive_age_ms && *s.last_receive_age_ms > 500) { /* sensor is quiet */ }
+  ```
+
+  The signal for "has this sensor gone quiet". A device that stops streaming
+  without erroring leaves every other counter healthy and the link reporting
+  Connected, because nothing went wrong - the data simply stopped. Only the age
+  says so. `nullopt` until something arrives, and cleared by `reset_stats()`, so
+  a restarted channel cannot report an age carried over from its previous life.
+
+  Passive by design: what to do about silence differs per device, so this
+  reports rather than acts. Serial additionally has `rx_idle_timeout`, which
+  does act, because there a concrete recovery exists - reopening the port. UDP
+  and the socket transports have no such recovery, which is why they get the
+  signal rather than a policy.
+
 - UDP multicast receive: `multicast_group(group, interface_address = "")` on
   both UDP builders joins the group after binding.
 

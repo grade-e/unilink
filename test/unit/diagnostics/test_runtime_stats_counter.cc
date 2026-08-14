@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 #include "wirestead/diagnostics/runtime_stats_counter.hpp"
 
 namespace {
@@ -128,6 +131,47 @@ TEST(RuntimeStatsCounterTest, DropWarningIsLatchedButCountersKeepAdding) {
   counters.reset(0);
   EXPECT_TRUE(counters.drop_warned.load());
   EXPECT_EQ(counters.snapshot(0, 0, false).dropped_bytes, 0u);
+}
+
+// A sensor going quiet leaves every other counter healthy and the link
+// reporting Connected, because nothing failed - the data just stopped. The age
+// is the only field that says so.
+TEST(RuntimeStatsCounterTest, LastReceiveAgeIsUnsetUntilSomethingArrives) {
+  RuntimeStatsCounters counters;
+
+  EXPECT_FALSE(counters.snapshot(0, 0, false).last_receive_age_ms.has_value())
+      << "reported an age before anything had ever been received";
+
+  counters.record_received(16);
+  const auto stats = counters.snapshot(0, 0, false);
+  ASSERT_TRUE(stats.last_receive_age_ms.has_value());
+  EXPECT_LT(*stats.last_receive_age_ms, 1000u);
+}
+
+TEST(RuntimeStatsCounterTest, LastReceiveAgeGrowsWithSilenceAndResetsOnData) {
+  RuntimeStatsCounters counters;
+  counters.record_received(1);
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  const auto stale = counters.snapshot(0, 0, false);
+  ASSERT_TRUE(stale.last_receive_age_ms.has_value());
+  EXPECT_GE(*stale.last_receive_age_ms, 40u) << "the age did not grow while nothing arrived";
+
+  counters.record_received(1);
+  const auto fresh = counters.snapshot(0, 0, false);
+  ASSERT_TRUE(fresh.last_receive_age_ms.has_value());
+  EXPECT_LT(*fresh.last_receive_age_ms, 40u) << "arriving data did not refresh the age";
+}
+
+// A restarted channel must not report an age carried over from its previous
+// life, which would read as "fresh data" when none has arrived yet.
+TEST(RuntimeStatsCounterTest, ResetClearsTheLastReceiveAge) {
+  RuntimeStatsCounters counters;
+  counters.record_received(1);
+  ASSERT_TRUE(counters.snapshot(0, 0, false).last_receive_age_ms.has_value());
+
+  counters.reset(0);
+  EXPECT_FALSE(counters.snapshot(0, 0, false).last_receive_age_ms.has_value());
 }
 
 }  // namespace

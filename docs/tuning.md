@@ -59,6 +59,27 @@ arrival time does not matter. Unlike everything else on this page, this one is
 worth setting without a measurement first: nothing else in the library recovers
 16 ms.
 
+## Detecting a sensor that went quiet
+
+`RuntimeStats::last_receive_age_ms` is milliseconds since bytes last arrived,
+on every transport, and `nullopt` until something has. It exists because a
+device that stops streaming without erroring leaves every other counter looking
+healthy and the link reporting `Connected` — nothing failed, the data just
+stopped.
+
+```cpp
+const auto s = channel->stats();
+const bool quiet = s.last_receive_age_ms && *s.last_receive_age_ms > 500;
+```
+
+Compare it against the slowest interval that device is expected to hit, with
+margin. It reports rather than acts, because what to do about silence differs
+per device — and `reset_stats()` clears it, so a restarted channel does not
+report an age from its previous life.
+
+Serial additionally offers an active version below, because there a concrete
+recovery exists.
+
 ## Serial receive watchdog
 
 A device that stops streaming without erroring leaves a healthy open port and a

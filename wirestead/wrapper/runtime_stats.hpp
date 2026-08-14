@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace wirestead {
 namespace wrapper {
@@ -44,6 +45,20 @@ struct RuntimeStats {
   size_t max_queued_bytes = 0;
 
   bool backpressure_active = false;
+
+  // Milliseconds since bytes last arrived, or nullopt if none ever have.
+  //
+  // The signal a robot needs for "has this sensor gone quiet". A device that
+  // stops streaming without erroring leaves every other counter looking
+  // healthy and every state machine reporting Connected, because nothing has
+  // gone wrong - the data simply stopped. Only the age says so.
+  //
+  // Passive on purpose: what to do about silence is the caller's decision and
+  // differs per device, so this reports rather than acts. Compare it against
+  // the slowest interval that device is expected to hit, with margin. Serial
+  // additionally offers rx_idle_timeout, which does act, because there a
+  // concrete recovery exists - reopening the port.
+  std::optional<uint64_t> last_receive_age_ms;
 };
 
 }  // namespace wrapper

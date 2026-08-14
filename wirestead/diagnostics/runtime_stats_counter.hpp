@@ -17,6 +17,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 
@@ -35,6 +36,8 @@ struct RuntimeStatsCounters {
 
   std::atomic<uint64_t> bytes_received{0};
   std::atomic<uint64_t> messages_received{0};
+  // Steady-clock nanoseconds at the last receive; 0 means nothing has arrived.
+  std::atomic<int64_t> last_receive_ns{0};
 
   std::atomic<uint64_t> failed_sends{0};
 
@@ -62,9 +65,17 @@ struct RuntimeStatsCounters {
   void record_received(size_t bytes) {
     messages_received.fetch_add(1, std::memory_order_relaxed);
     bytes_received.fetch_add(bytes, std::memory_order_relaxed);
+    // Steady rather than system clock: this is only ever read as an age, and
+    // an age computed across a clock step is worse than no age at all.
+    last_receive_ns.store(steady_now_ns(), std::memory_order_relaxed);
   }
 
   void record_failed_send() { failed_sends.fetch_add(1, std::memory_order_relaxed); }
+
+  static int64_t steady_now_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+  }
 
   // Every drop in the library routes through here. BestEffort discards by
   // design and can do it hundreds of thousands of times a second, so the
@@ -128,6 +139,11 @@ struct RuntimeStatsCounters {
     stats.pending_bytes = pending_bytes;
     stats.max_queued_bytes = max_queued_bytes.load(std::memory_order_relaxed);
     stats.backpressure_active = backpressure_active;
+    const int64_t last = last_receive_ns.load(std::memory_order_relaxed);
+    if (last != 0) {
+      const int64_t age = steady_now_ns() - last;
+      stats.last_receive_age_ms = static_cast<uint64_t>(age > 0 ? age / 1'000'000 : 0);
+    }
     return stats;
   }
 
@@ -138,6 +154,7 @@ struct RuntimeStatsCounters {
     messages_sent.store(0, std::memory_order_relaxed);
     bytes_received.store(0, std::memory_order_relaxed);
     messages_received.store(0, std::memory_order_relaxed);
+    last_receive_ns.store(0, std::memory_order_relaxed);
     failed_sends.store(0, std::memory_order_relaxed);
     dropped_messages.store(0, std::memory_order_relaxed);
     dropped_bytes.store(0, std::memory_order_relaxed);
