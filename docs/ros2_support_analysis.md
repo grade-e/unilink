@@ -1,7 +1,7 @@
 # ROS 2 Support Analysis
 
 Status: implementation started
-Reviewed: 2026-08-09
+Reviewed: 2026-08-15
 
 > **Implementation decision:** Wirestead core will be registered directly as
 > the plain-CMake ROS package `wirestead`. ROS-specific integration lives in
@@ -48,16 +48,31 @@ a ROS bridge:
 - dedicated or shared Boost.Asio contexts;
 - callback-based receive, connection, disconnection, error, and backpressure
   events;
-- raw, line-delimited, and start/end-pattern framing;
+- raw, line-delimited, start/end-pattern and length-prefixed framing;
 - non-blocking send APIs and ownership-transfer send APIs;
-- reconnect configuration and runtime statistics.
+- reconnect configuration and runtime statistics;
+- an arrival timestamp on every received payload, so a driver can stamp a
+  message from when the bytes landed rather than from when it got round to
+  publishing;
+- a per-channel silence age, which is what tells a driver its device stopped
+  streaming while the link still reports Connected.
+
+Delivered since this analysis was first written (2026-08-13..15):
+
+- `wirestead_ros` diagnostics: `report_channel_stats()` maps `RuntimeStats` onto
+  `diagnostic_updater`, including a STALE level for a silent link;
+- a reference lifecycle driver, `serial_line_driver`, with parameters, ordered
+  shutdown through `CallbackGate`, and semantic `sensor_msgs` output;
+- ROS-level integration tests: the driver's lifecycle and I/O are exercised over
+  a pseudo-terminal.
 
 The following ROS-specific capabilities are not yet complete:
 
 - a released Wirestead tag containing its new plain-CMake `package.xml`;
 - ROS messages defining binary frames and server connection identity;
-- lifecycle nodes, composable nodes, parameters, launch files, and QoS policy;
-- standard ROS diagnostics and ROS-level integration tests;
+- composable nodes, launch files, and a documented QoS policy (the reference
+  driver is a lifecycle node with parameters, but the bridge nodes are not
+  built);
 - bloom and rosdistro release metadata.
 
 ## Verified build integration
@@ -583,13 +598,19 @@ all packages in the repository against that exact version.
 ## Security boundary
 
 ROS security protects the DDS/ROS side of the bridge. It does not secure the
-external Wirestead transport. Wirestead currently sends TCP and UDP data in
-plaintext and does not provide TLS or DTLS.
+external Wirestead transport, and the two are separate contracts: ROS support
+must not imply that the entire end-to-end path is protected by SROS2.
 
-Deployment documentation must therefore require a trusted network, an external
-VPN/tunnel, or application-level authentication and encryption where the
-external link crosses an untrusted network. ROS support must not imply that the
-entire end-to-end path is protected by SROS2.
+TCP can be encrypted. A build configured with `-DWIRESTEAD_ENABLE_TLS=ON`
+offers TLS for both the client and the server, with the client verifying the
+server against the system trust store or a supplied CA. **UDP, Serial and UDS
+send in plaintext and there is no DTLS**, so a bridge on those transports still
+needs a trusted network, an external VPN or tunnel, or application-level
+authentication and encryption wherever the external link crosses an untrusted
+one.
+
+Deployment documentation should say which of the two situations a given bridge
+is in rather than leaving it to be assumed.
 
 ## Superseded recommendation
 

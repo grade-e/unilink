@@ -26,8 +26,11 @@ The project prioritizes **API clarity, predictable runtime behavior, and stabili
 ## Feature Highlights
 
 * **Unified transport surface**: Consistent builders and wrappers for TCP client/server, UDP, Serial, and UDS.
-* **Callback-scoped data views**: Avoid unnecessary copies during callbacks, with explicit ownership-copy helpers for stored data.
+* **Callback-scoped data views**: Avoid unnecessary copies during callbacks, with explicit ownership-copy helpers for stored data. Each payload carries the time it arrived, so a timestamp does not have to be taken after the fact.
+* **Message framing**: Line-delimited, start/end pattern, and length-prefixed framers, or your own `IFramer`.
+* **Optional TLS**: TCP client and server in a build configured with `-DWIRESTEAD_ENABLE_TLS=ON`, with the client verifying the server.
 * **Fluent API with CRTP Builders**: Type-safe configuration with improved method chaining.
+* **Built for devices**: Serial low-latency mode and RS-485, UDP multicast, a per-channel silence age for spotting a sensor that stopped talking, and a hook for putting the io threads on a real-time policy. See [Tuning](docs/tuning.md).
 * **Tested runtime behavior**: Unit, integration, and end-to-end test suites are part of the repository and documented in `test/`.
 
 ## Requirements
