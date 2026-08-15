@@ -113,6 +113,7 @@ foreach(
   test_server_broadcast_contract.cc
   test_server_broadcast_slow_consumer_contract.cc
   test_server_batch_latency_flush.cc
+  test_live_setter_forwarding.cc
 )
   get_filename_component(test_name ${test_file} NAME_WE)
 
