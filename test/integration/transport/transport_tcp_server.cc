@@ -133,6 +133,13 @@ TEST_F(TransportTcpServerTest, WriteWithoutActiveSessionReturnsFalse) {
   EXPECT_FALSE(server_->async_write_shared(shared_payload));
   EXPECT_FALSE(server_->broadcast("payload"));
   EXPECT_FALSE(server_->broadcast(memory::ConstByteSpan(payload.data(), payload.size())));
+
+  const auto before = server_->stats();
+  EXPECT_FALSE(server_->async_try_write_copy(memory::ConstByteSpan(payload.data(), payload.size())));
+  EXPECT_FALSE(server_->async_try_write_move(std::vector<uint8_t>{1, 2, 3}));
+  EXPECT_FALSE(server_->async_try_write_shared(shared_payload));
+  EXPECT_FALSE(server_->try_send_to_client(1, "no such client"));
+  EXPECT_EQ(server_->stats().failed_sends, before.failed_sends + 4);
 }
 
 TEST_F(TransportTcpServerTest, BindFailureTriggerError) {
@@ -539,6 +546,22 @@ TEST_F(TransportTcpServerTest, ConnectedClientWriteAndQueryApis) {
       server_->send_to_client(client_id.load(), memory::ConstByteSpan(span_payload.data(), span_payload.size())));
   EXPECT_FALSE(server_->send_to_client(client_id.load() + 1000, "missing"));
 
+  // The try_* family forwards to the same session and only refuses under
+  // backpressure, which is not active here. TryWriteTransportContractTest
+  // covers the refusal side for every other transport but cannot reach
+  // TcpServer, whose sessions are owned by the acceptor.
+  std::vector<uint8_t> try_copy_payload = {'t', 'r', 'y', 'c', 'o', 'p', 'y'};
+  auto try_shared_payload =
+      std::make_shared<const std::vector<uint8_t>>(std::vector<uint8_t>{'t', 'r', 'y', 's', 'h', 'a', 'r', 'e', 'd'});
+
+  EXPECT_TRUE(server_->async_try_write_copy(memory::ConstByteSpan(try_copy_payload.data(), try_copy_payload.size())));
+  EXPECT_TRUE(server_->async_try_write_move(std::vector<uint8_t>{'t', 'r', 'y', 'm', 'o', 'v', 'e'}));
+  EXPECT_TRUE(server_->async_try_write_shared(try_shared_payload));
+  EXPECT_TRUE(server_->try_send_to_client(client_id.load(), "trydirect"));
+  EXPECT_TRUE(
+      server_->try_send_to_client(client_id.load(), memory::ConstByteSpan(span_payload.data(), span_payload.size())));
+  EXPECT_FALSE(server_->try_send_to_client(client_id.load() + 1000, "missing"));
+
   client.non_blocking(true);
   std::string received;
   std::array<char, 256> buffer{};
@@ -551,7 +574,9 @@ TEST_F(TransportTcpServerTest, ConnectedClientWriteAndQueryApis) {
         }
         return received.find("copy") != std::string::npos && received.find("move") != std::string::npos &&
                received.find("shared") != std::string::npos && received.find("broadcast") != std::string::npos &&
-               received.find("span") != std::string::npos && received.find("direct") != std::string::npos;
+               received.find("span") != std::string::npos && received.find("direct") != std::string::npos &&
+               received.find("trycopy") != std::string::npos && received.find("trymove") != std::string::npos &&
+               received.find("tryshared") != std::string::npos && received.find("trydirect") != std::string::npos;
       },
       1000));
 
