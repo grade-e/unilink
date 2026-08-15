@@ -46,6 +46,7 @@ TEST_F(SerialBuilderConfigTest, ExplicitOptionsArePropagatedToTheWrapper) {
                     .stop_bits(2)
                     .reopen_on_error(false)
                     .retry_interval(500ms)
+                    .rx_idle_timeout(250ms)
                     .on_data([](auto&&) {})
                     .on_error([](auto&&) {})
                     .build();
@@ -56,6 +57,7 @@ TEST_F(SerialBuilderConfigTest, ExplicitOptionsArePropagatedToTheWrapper) {
   EXPECT_EQ(cfg.stop_bits, 2u);
   EXPECT_FALSE(cfg.reopen_on_error);
   EXPECT_EQ(cfg.retry_interval_ms, 500u);
+  EXPECT_EQ(cfg.rx_idle_timeout_ms, 250u);
 }
 
 TEST_F(SerialBuilderConfigTest, UnsetOptionsFallBackToConfigDefaultsNotBuilderDefaults) {
@@ -71,4 +73,8 @@ TEST_F(SerialBuilderConfigTest, UnsetOptionsFallBackToConfigDefaultsNotBuilderDe
   EXPECT_EQ(cfg.stop_bits, expected.stop_bits);
   EXPECT_EQ(cfg.reopen_on_error, expected.reopen_on_error);
   EXPECT_EQ(cfg.retry_interval_ms, expected.retry_interval_ms);
+  // Off unless asked for: an rx watchdog shorter than the device's real
+  // message gap tears the link down and reopens in a loop.
+  EXPECT_EQ(cfg.rx_idle_timeout_ms, expected.rx_idle_timeout_ms);
+  EXPECT_EQ(cfg.rx_idle_timeout_ms, 0u);
 }

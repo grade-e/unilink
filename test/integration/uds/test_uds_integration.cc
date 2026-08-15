@@ -24,6 +24,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "test_utils.hpp"
 #include "wirestead/builder/auto_initializer.hpp"
@@ -103,6 +104,63 @@ TEST_F(UdsIntegrationTest, BasicCommunication) {
 
   EXPECT_TRUE(success) << "Data was not received by server";
   EXPECT_EQ(received_data, test_msg);
+
+  client->stop();
+  server->stop();
+}
+
+// use_length_prefix_framer() exists because the pattern-based framers cannot
+// carry a binary payload: PacketFramer ends the frame at the first occurrence
+// of its end pattern wherever it falls, and LineFramer at the first newline.
+// The payload here contains 0x02, 0x03 and '\n' for exactly that reason, so
+// this fails if build() ever stops installing the framer the builder was
+// asked for and falls back to a delimiter-based one.
+TEST_F(UdsIntegrationTest, LengthPrefixFramerCarriesAnArbitraryBinaryPayload) {
+  const std::vector<uint8_t> payload = {0x02, 0x00, 0x03, '\n', 0xFF, 'a', 0x00, 0x03};
+
+  std::mutex mtx;
+  std::condition_variable cv;
+  std::vector<uint8_t> received;
+  std::atomic<bool> message_received{false};
+  std::atomic<bool> server_connected{false};
+
+  auto server = wirestead::uds_server(socket_path_)
+                    .independent_context(true)
+                    .use_length_prefix_framer(2)
+                    .on_connect([&server_connected](const wrapper::ConnectionContext&) { server_connected = true; })
+                    .on_message([&](const wrapper::MessageContext& ctx) {
+                      std::lock_guard<std::mutex> lock(mtx);
+                      received = ctx.data_as_vector();
+                      message_received = true;
+                      cv.notify_one();
+                    })
+                    .on_error([](auto&&) {})
+                    .build();
+
+  server->start();
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server->listening(); }, 2000))
+      << "Server failed to start listening";
+
+  auto client = wirestead::uds_client(socket_path_)
+                    .independent_context(true)
+                    .on_data([](auto&&) {})
+                    .on_error([](auto&&) {})
+                    .build();
+
+  client->start();
+  ASSERT_TRUE(TestUtils::waitForCondition([&]() { return server_connected.load(); }, 5000))
+      << "Failed to establish connection";
+
+  // 2-byte big-endian length, excluding the prefix itself.
+  std::vector<uint8_t> frame = {static_cast<uint8_t>((payload.size() >> 8) & 0xFF),
+                                static_cast<uint8_t>(payload.size() & 0xFF)};
+  frame.insert(frame.end(), payload.begin(), payload.end());
+  ASSERT_TRUE(client->send_move(std::move(frame)));
+
+  std::unique_lock<std::mutex> lock(mtx);
+  EXPECT_TRUE(cv.wait_for(lock, 5s, [&]() { return message_received.load(); })) << "Framed message never arrived";
+  EXPECT_EQ(received, payload);
+  lock.unlock();
 
   client->stop();
   server->stop();
