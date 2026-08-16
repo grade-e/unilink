@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## Unreleased
+## v0.10.0 - 2026-08-16
 
 ### Added
 
@@ -304,6 +304,36 @@ and ABI policy.
   were reported as 400 KiB. The server-wide value is now the largest depth any
   one session reached. Servers with a single connected client are unaffected.
   The remaining fields are genuine totals and keep summing.
+
+### Compatibility
+
+- Additive at the symbol level: the shared library exports 1225 symbols against
+  v0.9.3's 1191, with **none removed**. The 34 new ones are the TLS builder and
+  wrapper entry points, `multicast_group()`, the serial `low_latency`/`rs485`/
+  `dtr`/`rts`/`rx_idle_timeout` setters, `client_stats()`, `LengthPrefixFramer`
+  and its vtable, and `concurrency::set_io_thread_init()`. Measured with
+  `nm -D --defined-only` on Release builds of the tag and of v0.9.3.
+
+- **This is a minor release rather than a patch because default behavior
+  changes.** A server's cumulative counters now survive the sessions that
+  produced them, so `TcpServer::stats()` and `UdsServer::stats()` no longer
+  collapse to zero when the last client disconnects, and `max_queued_bytes` is
+  the deepest queue one session reached rather than the sum of every session's
+  peak. Code that sampled `stats()` on an interval sees different numbers
+  without changing a line. `docs/api_stability.md` reserves that kind of change
+  for a minor bump.
+
+- TLS is opt-in and off by default. `WIRESTEAD_ENABLE_TLS=ON` adds OpenSSL as a
+  link dependency; a build that does not ask for it gains no new dependency,
+  and the TLS entry points compile to nothing.
+
+- Serial `low_latency` defaults to **on**, which is a behavior change for USB
+  serial adapters: the driver's receive latency timer is cleared where the
+  platform supports it. Ports that refuse the ioctl are unaffected and the
+  refusal is not an error. `rs485`, `dtr` and `rts` are engaged only when set.
+
+- Consumers must rebuild, as for any pre-1.0 release; see
+  `docs/api_stability.md`.
 
 ## v0.9.3 - 2026-08-08
 
