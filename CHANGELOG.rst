@@ -8,6 +8,15 @@ the ROS release tooling, which reads reStructuredText. ``CHANGELOG.md`` remains
 the full changelog and covers every release, including the ones before this
 file existed.
 
+0.9.5 (2026-08-16)
+------------------
+* Lower the minimum Boost version to 1.74, which is what Ubuntu 22.04 supplies,
+  so the library builds on ROS 2 Humble and on RHEL 9.
+* Build tests only when asked. ``WIRESTEAD_BUILD_TESTS`` now defaults to OFF, so
+  a package build no longer downloads GoogleTest at configure time.
+* First release a ROS build farm can build; v0.9.4 predates both changes.
+* Contributors: Jinwoo Sung
+
 0.9.4 (2026-08-16)
 ------------------
 * Add optional TLS for the TCP client and server, off by default.

@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## Unreleased
+## v0.9.5 - 2026-08-16
 
 ### Changed
 
@@ -39,6 +39,30 @@ and ABI policy.
 
   If you build from source and want the tests, pass `-DWIRESTEAD_BUILD_TESTS=ON`.
   Every preset in `CMakePresets.json` and `scripts/verify.sh` already does.
+
+### Compatibility
+
+- **Release this rather than v0.9.4 if you are packaging Wirestead for a
+  distribution.** v0.9.4 shipped before both changes above, so a build from that
+  tag still requires Boost 1.83 and still fetches GoogleTest at configure time.
+  A ROS build farm, which builds offline against Ubuntu 22.04's Boost 1.74,
+  fails on both counts. vcpkg, Conan and PyPI are unaffected, since each of them
+  supplies a recent Boost and passes `WIRESTEAD_BUILD_TESTS=OFF` explicitly.
+
+- **A patch release that changes one default.** `docs/api_stability.md` says
+  patch releases *should* avoid that, and `WIRESTEAD_BUILD_TESTS` moving from ON
+  to OFF is the exception, named here rather than left to be discovered. It
+  changes what a plain `cmake` build produces, not what the library does at
+  runtime.
+
+- Lowering the Boost minimum cannot break an existing consumer: anyone who
+  satisfied 1.83 satisfies 1.74. The generated `wiresteadConfig.cmake`, the
+  Debian dependency string and the RPM one all now read 1.74.0.
+
+- No public API changed and no symbol was removed.
+
+- Consumers must rebuild, as for any pre-1.0 release; see
+  `docs/api_stability.md`.
 
 ## v0.9.4 - 2026-08-16
 
