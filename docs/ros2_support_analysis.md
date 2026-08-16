@@ -78,7 +78,10 @@ The following ROS-specific capabilities are not yet complete:
 ## Verified build integration
 
 A local smoke test was performed on Ubuntu 24.04 with ROS 2 Jazzy, GCC 13,
-CMake 3.28, and Boost 1.83.
+CMake 3.28, and Boost 1.83. The Boost minimum has since dropped to 1.74, and
+`.github/workflows/boost-floor.yml` builds and tests the floor on Ubuntu 22.04
+(Boost 1.74) and CentOS Stream 9 (Boost 1.75) - the latter being what the ROS
+build farm compiles against for RHEL 9.
 
 The test performed the following operations:
 
@@ -379,7 +382,7 @@ this part is low risk.
 | Lyrical / Ubuntu 26.04 | Recommended current LTS target after dedicated CI validation |
 | Jazzy / Ubuntu 24.04 | Recommended first implementation target; local CMake/colcon smoke test passed |
 | Kilted / Ubuntu 24.04 | Likely low incremental cost while the distribution remains supported |
-| Humble / Ubuntu 22.04 | Not supported with default system Boost unless Wirestead lowers its Boost minimum or vendors Boost 1.83+ |
+| Humble / Ubuntu 22.04 | Buildable with default system Boost since the minimum dropped to 1.74; needs its own CI validation before it is claimed |
 
 ROS 2 Lyrical is supported until May 2031 and targets Ubuntu 26.04. ROS 2 Jazzy
 targets Ubuntu 24.04 and is supported until May 2029. See the ROS 2
@@ -494,9 +497,10 @@ already known to rosdep.
 
 Only add a `wirestead` rosdep key later if Wirestead itself becomes available
 as an accepted native package. Rosdistro strongly prefers native packages and
-warns against overlaying incompatible versions of system libraries. Therefore,
-do not vendor a private Boost 1.83 into Humble merely to obtain a public Humble
-release.
+warns against overlaying incompatible versions of system libraries. Vendoring a
+private Boost into Humble to obtain a public Humble release was rejected for
+that reason, and it is now moot: the Boost minimum is 1.74, which Ubuntu 22.04
+supplies.
 
 Before release, run:
 

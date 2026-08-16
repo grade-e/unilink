@@ -8,7 +8,7 @@ installation notes for Wirestead.
 - C++20 compiler
 - CMake 3.12+ for plain builds
 - CMake 3.21+ for repository presets
-- Boost 1.83.0+
+- Boost 1.74.0+
 - spdlog dependency according to build configuration
 
 vcpkg is the recommended dependency supplier. CMake owns the dependency version
@@ -44,9 +44,10 @@ target_compile_features(my_app PRIVATE cxx_std_20)
 
 ## Source build example
 
-Source builds require Boost 1.83.0+. Ubuntu 22.04 and 24.04 system Boost
-packages may be older than this baseline, so prefer the repository development
-setup or provide Boost through vcpkg/custom CMake prefixes before configuring.
+Source builds require Boost 1.74.0+, which the system packages on Ubuntu 22.04
+(1.74), RHEL 9 (1.75) and Ubuntu 24.04 (1.83) all satisfy. vcpkg or a custom
+CMake prefix is still the way to build against a newer Boost than the
+distribution supplies.
 
 For contributor/source builds with the repository-managed vcpkg checkout:
 
