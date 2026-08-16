@@ -21,8 +21,9 @@ The implementation assessment is:
 - **Prototype and client-only MVP: relatively straightforward**
 - **Lifecycle-aware bridge for every transport: moderate effort**
 - **Release-quality ROS distribution support: moderate to high effort**
-- **ROS 2 Humble support with system dependencies: difficult with the current
-  Boost requirement**
+- **ROS 2 Humble support with system dependencies: available since the Boost
+  minimum dropped to 1.74; CI builds it, and claiming support is now a
+  validation question rather than a dependency one**
 
 The communication engine does not need to be rewritten. Production drivers
 should link Wirestead directly and publish semantic ROS messages. A generic raw
@@ -382,7 +383,7 @@ this part is low risk.
 | Lyrical / Ubuntu 26.04 | Recommended current LTS target after dedicated CI validation |
 | Jazzy / Ubuntu 24.04 | Recommended first implementation target; local CMake/colcon smoke test passed |
 | Kilted / Ubuntu 24.04 | Likely low incremental cost while the distribution remains supported |
-| Humble / Ubuntu 22.04 | Buildable with default system Boost since the minimum dropped to 1.74; needs its own CI validation before it is claimed |
+| Humble / Ubuntu 22.04 | Builds and tests green in `wirestead-ros` CI since the Boost minimum dropped to 1.74; the row is still marked experimental there until it has been stable for a while |
 
 ROS 2 Lyrical is supported until May 2031 and targets Ubuntu 26.04. ROS 2 Jazzy
 targets Ubuntu 24.04 and is supported until May 2029. See the ROS 2
@@ -405,7 +406,7 @@ on Ubuntu 26.04. The successful local result applies only to Jazzy on Ubuntu
 | Framing parameters | Medium | Existing framers help, but parameter validation and protocol contracts are required |
 | Diagnostics | Low to medium | Runtime counters already exist; ROS mapping and update scheduling remain |
 | ROS build-farm release | Medium to high | Vendor packaging, rosdep, bloom, and per-distribution CI are new |
-| Humble compatibility | High | Ubuntu 22.04 system Boost is below Wirestead's current minimum |
+| Humble compatibility | Low | Resolved: the Boost minimum is 1.74, which Ubuntu 22.04 supplies, and `wirestead-ros` CI builds and tests Humble |
 
 Overall, the adapter is technically feasible and does not reveal a core API
 blocker. A client-only MVP is straightforward. Production support becomes more
