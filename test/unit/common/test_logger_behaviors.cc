@@ -27,6 +27,10 @@
 #include <thread>
 #include <vector>
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include "test_utils.hpp"
 #include "wirestead/diagnostics/logger.hpp"
 
@@ -583,7 +587,14 @@ TEST_F(LoggerBehaviorTest, FileOpenFailure) {
 #ifdef _WIN32
   std::string invalid_path = "Z:\\nonexistent\\test.log";
 #else
-  std::string invalid_path = "/root/test_log_permission_denied.log";  // Assuming not running as root
+  // The unwritable path is only unwritable for an ordinary user. Container
+  // builds run as root, where /root is writable and the open this asserts
+  // must fail instead succeeds - the test's own comment used to just assume
+  // that away.
+  if (::geteuid() == 0) {
+    GTEST_SKIP() << "running as root, where /root is writable and no open failure can be provoked";
+  }
+  std::string invalid_path = "/root/test_log_permission_denied.log";
 #endif
 
   // This should print error to stderr but not throw
