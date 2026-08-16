@@ -7,8 +7,13 @@ if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.31" AND POLICY CMP0167)
   cmake_policy(SET CMP0167 OLD)
 endif()
 
+# 1.74 is where Boost.Asio introduced any_io_executor, the newest Asio API this
+# library uses. The number was 1.83 for years because that is what Ubuntu 24.04
+# ships, which is a packaging convenience rather than a floor;
+# .github/workflows/ boost-floor.yml builds and tests against 1.74 and 1.75 so
+# the claim is measured rather than assumed.
 set(WIRESTEAD_MIN_BOOST_VERSION
-    1.83.0
+    1.74.0
     CACHE STRING "Minimum supported Boost version"
 )
 set(WIRESTEAD_MIN_SPDLOG_VERSION

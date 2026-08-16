@@ -37,7 +37,7 @@ The project prioritizes **API clarity, predictable runtime behavior, and stabili
 
 * **C++20 compiler and standard library**: GCC 10+, recent Clang/libc++, or MSVC 2022 (required)
 * CMake 3.12 or later for plain builds; CMake 3.21 or later for the repository presets
-* Boost 1.83.0 or later. vcpkg is the recommended dependency supplier; OS package manager Boost versions are supported only when they meet this minimum.
+* Boost 1.74.0 or later, which covers the system packages on Ubuntu 22.04 (1.74), RHEL 9 (1.75) and Ubuntu 24.04 (1.83). vcpkg remains the recommended dependency supplier; CI builds against the 1.74 floor as well as current Boost.
 
 ## 📦 Installation
 
@@ -64,7 +64,7 @@ cmake --build --preset dev-linux-x64
 ```
 
 The setup script installs Boost and spdlog through an untracked, repository-local `vcpkg/` checkout by default. Delete that directory any time to reclaim space; rerun the setup script to recreate it. Set `VCPKG_ROOT` before running the script if you want to reuse an external vcpkg checkout.
-CMake remains the version gate and rejects Boost versions older than 1.83.0.
+CMake remains the version gate and rejects Boost versions older than 1.74.0.
 The preset-based contributor workflow uses `CMakePresets.json` schema version 3, so those `cmake --preset ...` commands require CMake 3.21+.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full contributor workflow: running tests, `scripts/verify.sh`, commit conventions, and PR expectations.

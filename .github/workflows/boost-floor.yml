@@ -21,9 +21,9 @@ name: Boost floor
 # until a separate pull request lowers the default, and that pull request should
 # cite a run of this workflow rather than an argument.
 #
-# continue-on-error while the answer is unknown: this exists to produce
-# evidence, not to turn main red. Promote it to a required job once the floor
-# is settled.
+# The answer came back on 2026-08-16: both jobs build and pass. So the floor is
+# settled, the declared minimum is 1.74, and these jobs are now the thing that
+# keeps it true - they fail the build rather than reporting.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,6 +31,12 @@ concurrency:
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'cmake/**'
+      - 'wirestead/**'
+      - '.github/workflows/boost-floor.yml'
   pull_request:
     paths:
       - 'cmake/**'
@@ -44,7 +50,6 @@ jobs:
   floor:
     name: ${{ matrix.label }} (Boost ${{ matrix.boost }})
     runs-on: ubuntu-24.04
-    continue-on-error: true
     timeout-minutes: 45
     strategy:
       fail-fast: false
