@@ -75,6 +75,11 @@ TEST(SerialWrapperOptionsTest, SendWithoutConnection) {
   wrapper::Serial s("/dev/null", 9600);
   EXPECT_FALSE(s.send("data"));
   EXPECT_FALSE(s.send_line("line"));
+  // The blocking pair forwards to the same Impl and must refuse the same way
+  // rather than blocking on a link that does not exist. Neither public
+  // forwarder had a caller in the test tree.
+  EXPECT_FALSE(s.send_blocking("data"));
+  EXPECT_FALSE(s.send_line_blocking("line"));
 }
 
 TEST(SerialWrapperOptionsTest, StopWithoutStart) {

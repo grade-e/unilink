@@ -450,6 +450,149 @@ TEST_F(TransportUdpTest, ExplicitDestinationWriteWithoutRemote) {
   channel->stop();
 }
 
+// async_try_write_to() is the try_ half of the explicit-destination pair and
+// had no caller in the test tree at all. Backpressure is nowhere near active
+// here, so the contract is that it behaves exactly like async_write_to().
+TEST_F(TransportUdpTest, ExplicitDestinationTryWriteWithoutRemote) {
+  net::io_context ioc;
+  udp::socket receiver(ioc, udp::endpoint(udp::v4(), 0));
+  receiver.non_blocking(true);
+
+  config::UdpConfig cfg;
+  cfg.local_port = 0;
+  auto channel = UdpChannel::create(cfg, ioc);
+
+  std::atomic<bool> ready{false};
+  channel->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Listening) ready = true;
+  });
+  channel->start();
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        return ready.load();
+      },
+      1000));
+
+  const std::string payload = "try-explicit";
+  const udp::endpoint destination(net::ip::make_address("127.0.0.1"), receiver.local_endpoint().port());
+  EXPECT_TRUE(channel->async_try_write_to(
+      memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(payload.data()), payload.size()), destination));
+
+  std::array<char, 64> buffer{};
+  udp::endpoint sender;
+  EXPECT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        boost::system::error_code ec;
+        const auto bytes = receiver.receive_from(net::buffer(buffer), sender, 0, ec);
+        return !ec && std::string(buffer.data(), bytes) == payload;
+      },
+      1000));
+
+  channel->stop();
+}
+
+// enable_broadcast sets SO_BROADCAST during open_socket(), a block no test
+// ever entered because nothing set the flag. This does not prove a broadcast
+// datagram is routed - that depends on the network the runner is on - only
+// that asking for the option opens a working socket rather than failing the
+// open, which is the failure mode that would take the whole channel down.
+TEST_F(TransportUdpTest, BroadcastOptionOpensAWorkingSocket) {
+  net::io_context ioc;
+  udp::socket receiver(ioc, udp::endpoint(udp::v4(), 0));
+  receiver.non_blocking(true);
+
+  config::UdpConfig cfg;
+  cfg.local_port = 0;
+  cfg.enable_broadcast = true;
+  auto channel = UdpChannel::create(cfg, ioc);
+
+  std::atomic<bool> ready{false};
+  std::atomic<bool> failed{false};
+  channel->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Listening) ready = true;
+    if (state == base::LinkState::Error) failed = true;
+  });
+  channel->start();
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        return ready.load() || failed.load();
+      },
+      1000));
+  ASSERT_FALSE(failed.load()) << "enable_broadcast failed the socket open";
+
+  const std::string payload = "broadcast-enabled";
+  const udp::endpoint destination(net::ip::make_address("127.0.0.1"), receiver.local_endpoint().port());
+  EXPECT_TRUE(channel->async_write_to(
+      memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(payload.data()), payload.size()), destination));
+
+  std::array<char, 64> buffer{};
+  udp::endpoint sender;
+  EXPECT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        boost::system::error_code ec;
+        const auto bytes = receiver.receive_from(net::buffer(buffer), sender, 0, ec);
+        return !ec && std::string(buffer.data(), bytes) == payload;
+      },
+      1000));
+
+  channel->stop();
+}
+
+// reset_stats() is on the Channel contract - "cleared by reset_stats(), and by
+// a stop()/start() cycle" - and no test called it on this transport.
+TEST_F(TransportUdpTest, ResetStatsClearsCumulativeCounters) {
+  net::io_context ioc;
+  udp::socket receiver(ioc, udp::endpoint(udp::v4(), 0));
+  receiver.non_blocking(true);
+
+  config::UdpConfig cfg;
+  cfg.local_port = 0;
+  auto channel = UdpChannel::create(cfg, ioc);
+
+  std::atomic<bool> ready{false};
+  channel->on_state([&](base::LinkState state) {
+    if (state == base::LinkState::Listening) ready = true;
+  });
+  channel->start();
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        return ready.load();
+      },
+      1000));
+
+  const std::string payload = "counted";
+  const udp::endpoint destination(net::ip::make_address("127.0.0.1"), receiver.local_endpoint().port());
+  ASSERT_TRUE(channel->async_write_to(
+      memory::ConstByteSpan(reinterpret_cast<const uint8_t*>(payload.data()), payload.size()), destination));
+
+  ASSERT_TRUE(TestUtils::waitForCondition(
+      [&] {
+        ioc.poll();
+        ioc.restart();
+        return channel->stats().messages_accepted > 0;
+      },
+      1000));
+  EXPECT_GT(channel->stats().bytes_accepted, 0u);
+
+  channel->reset_stats();
+
+  const auto after = channel->stats();
+  EXPECT_EQ(after.messages_accepted, 0u);
+  EXPECT_EQ(after.bytes_accepted, 0u);
+
+  channel->stop();
+}
+
 TEST_F(TransportUdpTest, MemoryPoolExplicitDestinationWriteWithoutRemote) {
   net::io_context ioc;
   udp::socket receiver(ioc, udp::endpoint(udp::v4(), 0));
