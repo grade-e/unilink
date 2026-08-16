@@ -147,6 +147,7 @@ jobs:
             cmake -S . -B build -G "${{ matrix.cmake_generator }}" -A "${{ matrix.cmake_arch }}" \
               -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
               -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" \
+              -DWIRESTEAD_BUILD_TESTS=ON \
               -DWIRESTEAD_ENABLE_INSTALL=ON \
               -DWIRESTEAD_ENABLE_PKGCONFIG=ON \
               -DWIRESTEAD_ENABLE_EXPORT_HEADER=ON \
@@ -156,6 +157,7 @@ jobs:
             cmake -S . -B build -G "${{ matrix.cmake_generator }}" \
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_OSX_DEPLOYMENT_TARGET="$SDK_VER" \
+              -DWIRESTEAD_BUILD_TESTS=ON \
               -DWIRESTEAD_ENABLE_INSTALL=ON \
               -DWIRESTEAD_ENABLE_PKGCONFIG=ON \
               -DWIRESTEAD_ENABLE_EXPORT_HEADER=ON \
@@ -167,6 +169,7 @@ jobs:
               -DCMAKE_BUILD_TYPE=Release \
               -DCMAKE_C_COMPILER="${CC}" \
               -DCMAKE_CXX_COMPILER="${CXX}" \
+              -DWIRESTEAD_BUILD_TESTS=ON \
               -DWIRESTEAD_ENABLE_INSTALL=ON \
               -DWIRESTEAD_ENABLE_PKGCONFIG=ON \
               -DWIRESTEAD_ENABLE_EXPORT_HEADER=ON \
