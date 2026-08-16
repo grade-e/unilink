@@ -1,0 +1,104 @@
+name: Boost floor
+
+# Answers one question: how far below the declared Boost minimum does this
+# library still build?
+#
+# WIRESTEAD_MIN_BOOST_VERSION defaults to 1.83.0 because Ubuntu 24.04 ships
+# that through apt - a packaging choice, not an API floor. The oldest Boost.Asio
+# API in use is any_io_executor, which is 1.74, and nothing here uses the C++20
+# coroutine support that every Asio release between 1.75 and 1.83 was working
+# on. The one change in that range that could matter is Asio 1.75's "Fixed
+# compatibility with C++20 concept syntax", because builder/ibuilder.hpp
+# declares four concepts in a public header. So 1.74 and 1.75 are the two
+# versions worth knowing about, and they are exactly what two real platforms
+# ship:
+#
+#   Ubuntu 22.04  Boost 1.74  -> ROS 2 Humble, the most deployed ROS 2 LTS
+#   RHEL 9        Boost 1.75  -> Jazzy Tier 2 on the ROS build farm
+#
+# The minimum is a CACHE STRING, so these jobs lower the gate for themselves
+# with -D and leave the shipped default alone. Nothing a consumer sees changes
+# until a separate pull request lowers the default, and that pull request should
+# cite a run of this workflow rather than an argument.
+#
+# continue-on-error while the answer is unknown: this exists to produce
+# evidence, not to turn main red. Promote it to a required job once the floor
+# is settled.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'cmake/**'
+      - 'wirestead/**'
+      - '.github/workflows/boost-floor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    name: ${{ matrix.label }} (Boost ${{ matrix.boost }})
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Ubuntu 22.04
+            image: ubuntu:22.04
+            boost: "1.74.0"
+          - label: CentOS Stream 9
+            image: quay.io/centos/centos:stream9
+            boost: "1.75.0"
+
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Install toolchain and dependencies (Debian)
+        if: startsWith(matrix.image, 'ubuntu')
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential cmake ninja-build git \
+            libboost-all-dev libspdlog-dev libfmt-dev
+
+      - name: Install toolchain and dependencies (RPM)
+        if: startsWith(matrix.image, 'quay.io/centos')
+        run: |
+          dnf -y install epel-release
+          dnf -y install --enablerepo=crb \
+            gcc-c++ cmake ninja-build git \
+            boost-devel spdlog-devel fmt-devel
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Report what is actually installed
+        run: |
+          cmake --version | head -1
+          c++ --version | head -1
+          # The version that matters is whatever the system supplies, not the
+          # one this matrix expects; print it so a surprise is visible in the
+          # log rather than inferred from a failure.
+          grep -h "define BOOST_VERSION " /usr/include/boost/version.hpp || true
+          grep -h "define BOOST_LIB_VERSION" /usr/include/boost/version.hpp || true
+
+      - name: Configure against the lowered floor
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DWIRESTEAD_MIN_BOOST_VERSION=${{ matrix.boost }} \
+            -DWIRESTEAD_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build -j2
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure --parallel 2 -L unit
