@@ -6,6 +6,40 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Changed
+
+- The minimum supported Boost version is now **1.74**, down from 1.83.
+
+  1.83 was never an API floor - it is what Ubuntu 24.04 ships through apt, and
+  the number had hardened into a requirement. The oldest Boost.Asio API this
+  library uses is `any_io_executor`, which is 1.74. The C++20 concern behind the
+  higher number does not apply either: every C++20 entry in Asio's changelog
+  between 1.75 and 1.83 is about coroutines, which Wirestead does not use, and
+  `std::span` never reaches Asio because every call site converts to pointer and
+  size explicitly.
+
+  This is measured rather than argued. `.github/workflows/boost-floor.yml`
+  builds and runs the unit suite against Boost 1.74 on Ubuntu 22.04 and Boost
+  1.75 on CentOS Stream 9, and is a required job so the floor stays true.
+
+  Nothing breaks by lowering a floor - anyone who satisfied 1.83 satisfies 1.74.
+  What it opens is two platforms that were shut out: Ubuntu 22.04, and so ROS 2
+  Humble, and RHEL 9, which the ROS build farm compiles for.
+
+- `WIRESTEAD_BUILD_TESTS` now defaults to **OFF**.
+
+  Building tests pulls GoogleTest through `FetchContent`, which clones at
+  configure time, so the old default meant a build that never asked for tests
+  still needed the network. Packaging environments all passed `OFF` explicitly
+  already - vcpkg, the Conan recipe, the ROS integration CI - but Bloom
+  generates its Debian rules from `package.xml` without knowing the option
+  exists, and would have failed offline on the ROS build farm.
+
+  If you build from source and want the tests, pass `-DWIRESTEAD_BUILD_TESTS=ON`.
+  Every preset in `CMakePresets.json` and `scripts/verify.sh` already does.
+
 ## v0.9.4 - 2026-08-16
 
 ### Added
