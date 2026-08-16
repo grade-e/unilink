@@ -37,7 +37,15 @@ option(WIRESTEAD_LIMIT_EXPORTED_SYMBOLS
        "Restrict shared library exports to wirestead symbols" ON
 )
 option(WIRESTEAD_BUILD_STATIC "Build static library" ON)
-option(WIRESTEAD_BUILD_TESTS "Build tests" ON)
+# OFF by default because a build that does not ask for tests must not need the
+# network: WIRESTEAD_BUILD_TESTS pulls GoogleTest through FetchContent, and the
+# packaging environments that consume this project build offline. vcpkg, the
+# Conan recipe and the ROS integration CI all pass OFF explicitly today, but
+# Bloom generates its debian rules without knowing this option exists, so a
+# default of ON fails the ROS build farm at configure time. Everything that
+# wants tests - CI, the presets, scripts/verify.sh, the release workflow -
+# passes ON explicitly.
+option(WIRESTEAD_BUILD_TESTS "Build tests" OFF)
 option(
   WIRESTEAD_BUILD_DOCS
   "Compatibility option for legacy docs builds. Full docs live in wirestead-docs."
