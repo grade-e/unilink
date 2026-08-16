@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## v0.10.0 - 2026-08-16
+## v0.9.4 - 2026-08-16
 
 ### Added
 
@@ -314,14 +314,21 @@ and ABI policy.
   and its vtable, and `concurrency::set_io_thread_init()`. Measured with
   `nm -D --defined-only` on Release builds of the tag and of v0.9.3.
 
-- **This is a minor release rather than a patch because default behavior
-  changes.** A server's cumulative counters now survive the sessions that
-  produced them, so `TcpServer::stats()` and `UdsServer::stats()` no longer
-  collapse to zero when the last client disconnects, and `max_queued_bytes` is
-  the deepest queue one session reached rather than the sum of every session's
-  peak. Code that sampled `stats()` on an interval sees different numbers
-  without changing a line. `docs/api_stability.md` reserves that kind of change
-  for a minor bump.
+- **Read this before upgrading: a patch release that does change two default
+  behaviors.** `docs/api_stability.md` says patch releases *should* avoid
+  changing existing default behavior, and this one does it twice, so the
+  exceptions are named here rather than left to be discovered.
+
+  A server's cumulative counters now survive the sessions that produced them,
+  so `TcpServer::stats()` and `UdsServer::stats()` no longer collapse to zero
+  when the last client disconnects, and `max_queued_bytes` is the deepest queue
+  one session reached rather than the sum of every session's peak. Code that
+  samples `stats()` on an interval sees different numbers without changing a
+  line. Both were previously wrong rather than merely different - a server that
+  had moved 795 MB reported zero the moment its last client went away - which
+  is why the fix landed in the 0.9 line instead of waiting.
+
+  The other is serial `low_latency`, below.
 
 - TLS is opt-in and off by default. `WIRESTEAD_ENABLE_TLS=ON` adds OpenSSL as a
   link dependency; a build that does not ask for it gains no new dependency,
