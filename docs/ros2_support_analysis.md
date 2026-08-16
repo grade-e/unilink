@@ -383,7 +383,7 @@ this part is low risk.
 | Lyrical / Ubuntu 26.04 | Recommended current LTS target after dedicated CI validation |
 | Jazzy / Ubuntu 24.04 | Recommended first implementation target; local CMake/colcon smoke test passed |
 | Kilted / Ubuntu 24.04 | Likely low incremental cost while the distribution remains supported |
-| Humble / Ubuntu 22.04 | Builds and tests green in `wirestead-ros` CI since the Boost minimum dropped to 1.74; the row is still marked experimental there until it has been stable for a while |
+| Humble / Ubuntu 22.04 | Supported: a required `wirestead-ros` CI row since the Boost minimum dropped to 1.74, and a source entry in ros/rosdistro |
 
 ROS 2 Lyrical is supported until May 2031 and targets Ubuntu 26.04. ROS 2 Jazzy
 targets Ubuntu 24.04 and is supported until May 2029. See the ROS 2
