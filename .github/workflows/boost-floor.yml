@@ -21,9 +21,15 @@ name: Boost floor
 # until a separate pull request lowers the default, and that pull request should
 # cite a run of this workflow rather than an argument.
 #
-# The answer came back on 2026-08-16: both jobs build and pass. So the floor is
+# The answer came back on 2026-08-16: the jobs build and pass. So the floor is
 # settled, the declared minimum is 1.74, and these jobs are now the thing that
 # keeps it true - they fail the build rather than reporting.
+#
+# The matrix has since grown past "the floor" into the set of platforms the ROS
+# build farm actually produces packages for, each with the Boost that platform
+# supplies. Ubuntu 24.04 with Boost 1.83 is not a floor test at all; it is there
+# because arm64 is Tier 1 and nothing else builds this project on arm64 against
+# distribution packages rather than vcpkg.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -49,17 +55,35 @@ permissions:
 jobs:
   floor:
     name: ${{ matrix.label }} (Boost ${{ matrix.boost }})
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - label: Ubuntu 22.04
+          # The rows are the platforms the ROS build farm produces packages
+          # for, paired with the Boost each of them ships. REP-2000 marks
+          # Ubuntu amd64 *and arm64* Tier 1 for both Humble and Jazzy, so arm64
+          # is not an extra - it is half of the Tier 1 surface, and every other
+          # place this project builds on arm64 gets Boost from vcpkg rather
+          # than from the distribution.
+          - label: Ubuntu 22.04 amd64
             image: ubuntu:22.04
+            runner: ubuntu-24.04
             boost: "1.74.0"
-          - label: CentOS Stream 9
+          - label: Ubuntu 22.04 arm64
+            image: ubuntu:22.04
+            runner: ubuntu-22.04-arm
+            boost: "1.74.0"
+          - label: Ubuntu 24.04 arm64
+            image: ubuntu:24.04
+            runner: ubuntu-24.04-arm
+            boost: "1.83.0"
+          # RHEL is Tier 2 and amd64 only - REP-2000 leaves the arm64 cell
+          # empty for it - so there is no arm64 row to add here.
+          - label: CentOS Stream 9 amd64
             image: quay.io/centos/centos:stream9
+            runner: ubuntu-24.04
             boost: "1.75.0"
 
     container:
