@@ -68,6 +68,36 @@ client->on_message([&](const wirestead::MessageContext& ctx) {
 This is transport arrival, not a kernel or hardware timestamp: it includes
 whatever the kernel spent before the read completed.
 
+## Choosing a framer
+
+`on_message()` needs a framer, and which one is not a style choice:
+
+| framer | splits on | use when |
+| --- | --- | --- |
+| `use_line_framer(delim)` | a delimiter, `\n` by default | text-line protocols |
+| `use_packet_framer(start, end, max)` | a start and end byte pattern | the payload cannot contain the end pattern |
+| `use_length_prefix_framer(bytes, endian, max)` | a length prefix, 2 bytes big-endian by default | binary payloads |
+
+`use_packet_framer()` does no escaping. The **first** occurrence of the end
+pattern ends the frame, wherever it falls, so a binary payload that happens to
+contain those bytes is truncated — and the byte counters still balance, so
+nothing anywhere reports an error. The reader sees a short message and has no
+way to tell it from a real one.
+
+`use_length_prefix_framer()` has no special byte values: the length says how
+many bytes to collect, so the payload may hold anything.
+
+```cpp
+.use_length_prefix_framer(4)   // 4-byte big-endian length, excluding the prefix
+.on_message([](const wirestead::MessageContext& ctx) { /* ... */ })
+```
+
+Its own limit is the mirror image: there is no sync word, so it cannot
+resynchronise and needs a stream that starts on a frame boundary. That is the
+normal case for TCP and UDS, and wrong for a serial line joined mid-stream —
+there, a framer with a sync word is what you want, which
+`builder/ibuilder.hpp`'s `framer(factory)` lets you supply.
+
 ## Do not call a blocking send from within a callback
 
 `on_data`/`on_message` (and every other) callback runs on the channel's own
