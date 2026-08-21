@@ -183,6 +183,14 @@ cat > "$CONSUMER_DIR/main.cpp" <<'EOF'
 
 #include <wirestead/wirestead.hpp>
 
+// Public API reachable only through the umbrella header. set_io_thread_init was
+// documented in docs/tuning.md while wirestead.hpp did not include its header,
+// so the documented example did not compile against an install.
+static void umbrella_reaches_public_api() {
+    wirestead::concurrency::set_io_thread_init([] {});
+    wirestead::concurrency::set_io_thread_init(nullptr);
+}
+
 #ifndef _WIN32
 uint16_t reserve_tcp_port() {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -225,6 +233,7 @@ bool wait_until(Predicate&& predicate, std::chrono::milliseconds timeout) {
 }
 
 int main() {
+    umbrella_reaches_public_api();
     const auto port = reserve_tcp_port();
     if (port == 0) {
         std::cerr << "failed to reserve a TCP loopback port\n";

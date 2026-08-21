@@ -54,6 +54,9 @@
 #include "wirestead/config/iconfig_manager.hpp"
 #endif
 
+// Io thread policy hook
+#include "wirestead/concurrency/io_thread_hook.hpp"
+
 // Error handling and logging system includes
 #include "wirestead/diagnostics/error_handler.hpp"
 #include "wirestead/diagnostics/logger.hpp"
