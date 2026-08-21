@@ -1,7 +1,9 @@
 # Quick Start
 
-This repository contains the minimal Wirestead quickstart. Extended tutorials
-remain in the external documentation repository until that repository is moved.
+This is the minimal quickstart, kept here so the source repository stands on its
+own. The extended tutorial lives on the [documentation
+site](https://wirestead.github.io/wirestead-docs/). That split is deliberate
+rather than temporary - see `docs/README.md`.
 
 ## Minimal CMake
 
