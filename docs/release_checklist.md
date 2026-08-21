@@ -43,7 +43,12 @@ CI, CPack, and consumer smoke workflows live here.
   - [ ] `docs/quickstart.md`
   - [ ] `docs/api_stability.md`
   - [ ] `docs/release_checklist.md`
-- [ ] `wirestead-docs` is updated when public API or behavior changes.
+- [ ] `wirestead-docs` is updated when public API or behavior changes. Verified
+      with `scripts/check_docs_coverage.sh <previous-tag>`, which lists public
+      API added since that tag with no mention in either this repository's
+      `docs/` or the documentation site. This box was tickable without checking
+      before, and was ticked for two releases that added eight undocumented
+      APIs.
 - [ ] Doxygen workflow in `wirestead-docs` passes.
 
 ## Benchmark / validation
