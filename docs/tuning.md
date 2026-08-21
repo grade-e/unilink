@@ -59,6 +59,30 @@ arrival time does not matter. Unlike everything else on this page, this one is
 worth setting without a measurement first: nothing else in the library recovers
 16 ms.
 
+## Receiving a multicast stream
+
+`multicast_group(address)` on the UDP builders joins that group after bind, so
+the socket receives what the group sends. Lidar and camera streams are usually
+published this way, and nothing else in the API substitutes for it:
+`broadcast(true)` sets `SO_BROADCAST` on the **send** side and has no effect on
+what arrives.
+
+```cpp
+auto receiver = wirestead::udp_server(2368)
+                    .multicast_group("239.255.0.1")
+                    .on_data([](auto&& ctx) { /* ... */ })
+                    .build();
+```
+
+A failed join fails `start()` rather than being logged and ignored. That is
+deliberate: a socket that silently did not join is indistinguishable from a
+sensor that stopped sending, and the whole point of the feature is to tell
+those apart.
+
+Sending to a group needs no join — set `remote_address` to the group address.
+The TTL is 1, so it stays on the local subnet, which is where a robot's sensors
+are.
+
 ## Detecting a sensor that went quiet
 
 `RuntimeStats::last_receive_age_ms` is milliseconds since bytes last arrived,
