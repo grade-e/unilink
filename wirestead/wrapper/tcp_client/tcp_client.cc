@@ -770,6 +770,16 @@ TcpClient& TcpClient::backpressure_strategy(base::constants::BackpressureStrateg
   return *this;
 }
 
+size_t TcpClient::backpressure_threshold() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_threshold_;
+}
+
+base::constants::BackpressureStrategy TcpClient::backpressure_strategy() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_strategy_;
+}
+
 TcpClient& TcpClient::tcp_no_delay(bool enable) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->tcp_no_delay_ = enable;

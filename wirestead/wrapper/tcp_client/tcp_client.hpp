@@ -124,6 +124,11 @@ class WIRESTEAD_API TcpClient : public ChannelInterface {
   TcpClient& idle_timeout_action(IdleTimeoutAction action);
   TcpClient& backpressure_threshold(size_t threshold);
   TcpClient& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   // Socket-option setters below have no live/runtime effect on an already-open
   // socket: they stage a value that is only applied the next time start()
   // builds a fresh connection (e.g. after stop() + start() again). Calling

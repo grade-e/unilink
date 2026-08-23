@@ -805,6 +805,16 @@ Serial& Serial::backpressure_strategy(base::constants::BackpressureStrategy stra
   return *this;
 }
 
+size_t Serial::backpressure_threshold() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_threshold;
+}
+
+base::constants::BackpressureStrategy Serial::backpressure_strategy() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_strategy;
+}
+
 config::SerialConfig Serial::build_config() const {
   std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
   return impl_->build_config_locked();

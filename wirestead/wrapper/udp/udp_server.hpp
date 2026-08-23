@@ -99,6 +99,11 @@ class WIRESTEAD_API UdpServer : public ServerInterface {
   UdpServer& max_clients(size_t max);
   UdpServer& backpressure_threshold(size_t threshold);
   UdpServer& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   UdpServer& send_buffer_size(size_t bytes);
   UdpServer& receive_buffer_size(size_t bytes);
   UdpServer& manage_external_context(bool manage);

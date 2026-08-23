@@ -716,6 +716,16 @@ UdsClient& UdsClient::backpressure_strategy(base::constants::BackpressureStrateg
   return *this;
 }
 
+size_t UdsClient::backpressure_threshold() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_threshold_;
+}
+
+base::constants::BackpressureStrategy UdsClient::backpressure_strategy() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->backpressure_strategy_;
+}
+
 UdsClient& UdsClient::manage_external_context(bool manage) {
   impl_->manage_external_context_.store(manage);
   return *this;

@@ -92,6 +92,11 @@ class WIRESTEAD_API UdpClient : public ChannelInterface {
 
   UdpClient& backpressure_threshold(size_t threshold);
   UdpClient& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   UdpClient& send_buffer_size(size_t bytes);
   UdpClient& receive_buffer_size(size_t bytes);
   UdpClient& manage_external_context(bool manage);

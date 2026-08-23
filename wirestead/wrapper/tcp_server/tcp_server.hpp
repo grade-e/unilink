@@ -115,6 +115,11 @@ class WIRESTEAD_API TcpServer : public ServerInterface {
   TcpServer& max_clients(size_t max);
   TcpServer& backpressure_threshold(size_t threshold);
   TcpServer& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   TcpServer& tcp_no_delay(bool enable = true);
   TcpServer& keep_alive(bool enable = true);
   /**
