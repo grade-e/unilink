@@ -742,6 +742,12 @@ TcpServer& TcpServer::backpressure_strategy(base::constants::BackpressureStrateg
   return *this;
 }
 
+size_t TcpServer::backpressure_threshold() const { return impl_->backpressure_threshold_.load(); }
+
+base::constants::BackpressureStrategy TcpServer::backpressure_strategy() const {
+  return impl_->backpressure_strategy_.load();
+}
+
 TcpServer& TcpServer::tcp_no_delay(bool enable) {
   impl_->tcp_no_delay_.store(enable);
   return *this;

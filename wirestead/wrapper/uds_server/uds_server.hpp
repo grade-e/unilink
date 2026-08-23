@@ -119,6 +119,11 @@ class WIRESTEAD_API UdsServer : public ServerInterface {
    */
   UdsServer& read_buffer_size(size_t bytes);
   UdsServer& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   UdsServer& manage_external_context(bool manage);
   UdsServer& batch_size(size_t size);
   UdsServer& batch_latency(std::chrono::milliseconds latency);

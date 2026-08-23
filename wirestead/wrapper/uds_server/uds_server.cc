@@ -648,6 +648,12 @@ UdsServer& UdsServer::backpressure_strategy(base::constants::BackpressureStrateg
   return *this;
 }
 
+size_t UdsServer::backpressure_threshold() const { return impl_->backpressure_threshold_.load(); }
+
+base::constants::BackpressureStrategy UdsServer::backpressure_strategy() const {
+  return impl_->backpressure_strategy_.load();
+}
+
 UdsServer& UdsServer::manage_external_context(bool manage) {
   impl_->manage_external_context_.store(manage);
   return *this;

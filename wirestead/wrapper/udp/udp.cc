@@ -665,6 +665,16 @@ UdpClient& UdpClient::backpressure_strategy(base::constants::BackpressureStrateg
   return *this;
 }
 
+size_t UdpClient::backpressure_threshold() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->cfg.backpressure_threshold;
+}
+
+base::constants::BackpressureStrategy UdpClient::backpressure_strategy() const {
+  std::shared_lock<std::shared_mutex> lock(impl_->mutex_);
+  return impl_->cfg.backpressure_strategy;
+}
+
 UdpClient& UdpClient::send_buffer_size(size_t bytes) {
   std::unique_lock<std::shared_mutex> lock(impl_->mutex_);
   impl_->cfg.send_buffer_size = bytes;

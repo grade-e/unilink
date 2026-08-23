@@ -132,6 +132,11 @@ class WIRESTEAD_API Serial : public ChannelInterface {
   Serial& retry_interval(std::chrono::milliseconds interval);
   Serial& backpressure_threshold(size_t threshold);
   Serial& backpressure_strategy(base::constants::BackpressureStrategy strategy);
+
+  /// Returns the configured backpressure threshold in bytes.
+  size_t backpressure_threshold() const;
+  /// Returns the configured backpressure strategy.
+  base::constants::BackpressureStrategy backpressure_strategy() const;
   Serial& manage_external_context(bool manage);
   Serial& batch_size(size_t size);
   Serial& batch_latency(std::chrono::milliseconds latency);

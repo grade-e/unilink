@@ -146,6 +146,7 @@ foreach(
   test_error_context_builder.cc
   test_message_context.cc
   test_batch_latency_flush.cc
+  test_backpressure_getters.cc
 )
   get_filename_component(test_name ${test_file} NAME_WE)
 

@@ -6,6 +6,31 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Added
+
+- `backpressure_threshold()` and `backpressure_strategy()` on `Serial`,
+  `TcpClient`, `TcpServer`, `UdpClient`, `UdpServer`, `UdsClient`, and
+  `UdsServer`.
+
+  ```cpp
+  server.backpressure_threshold(8192);
+  const size_t configured = server.backpressure_threshold();  // 8192
+  ```
+
+  Both settings were write-only. The setters have been there all along, but
+  nothing read them back, so a caller could not log the configuration it was
+  running under, round-trip it, or assert on it from a test without tracking
+  the value separately alongside the transport.
+
+  v0.9.4 added `RuntimeStats` because backpressure could be configured with no
+  way to observe what it produced. That covered the runtime half; the setting
+  itself stayed unreadable. This covers the other half.
+
+  The Python bindings raised `AttributeError: backpressure_threshold is
+  write-only` on read for the same reason, and can now expose real properties.
+
 ## v0.9.5 - 2026-08-16
 
 ### Changed
