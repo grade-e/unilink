@@ -10,8 +10,9 @@ file existed.
 
 0.9.6 (2026-08-30)
 ------------------
-* Install ``package.xml`` to ``share/wirestead/``, so ROS tooling and the ament
-  index can discover the package once it is installed from a Debian.
+* Install ``package.xml`` to ``share/wirestead/``, so the Debian carries its
+  package manifest rather than none, as every released plain-CMake ROS package
+  does.
 * Declare Boost as a build-time dependency only, and narrow it from
   ``libboost-all-dev`` to ``libboost-dev`` and ``libboost-system-dev``. Asio and
   System are header-only, so the library has no Boost runtime dependency.
