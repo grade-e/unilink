@@ -313,6 +313,13 @@ if(WIRESTEAD_ENABLE_INSTALL)
     COMPONENT documentation
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
   )
+
+  # ROS package index lookup (ros2 pkg list, ament index) reads this.
+  install(
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/package.xml
+    COMPONENT ros
+    DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/${PROJECT_NAME}
+  )
 endif()
 
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
