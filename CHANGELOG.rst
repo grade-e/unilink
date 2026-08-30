@@ -8,6 +8,19 @@ the ROS release tooling, which reads reStructuredText. ``CHANGELOG.md`` remains
 the full changelog and covers every release, including the ones before this
 file existed.
 
+0.9.6 (2026-08-30)
+------------------
+* Install ``package.xml`` to ``share/wirestead/``, so ROS tooling and the ament
+  index can discover the package once it is installed from a Debian.
+* Declare Boost as a build-time dependency only, and narrow it from
+  ``libboost-all-dev`` to ``libboost-dev`` and ``libboost-system-dev``. Asio and
+  System are header-only, so the library has no Boost runtime dependency.
+* Add getters for the backpressure threshold and strategy on every transport.
+* Fix ``set_io_thread_init()`` being unreachable through the umbrella header.
+* First release a Bloom-generated Debian is discoverable from; v0.9.5 predates
+  both packaging fixes.
+* Contributors: Jinwoo Sung
+
 0.9.5 (2026-08-16)
 ------------------
 * Lower the minimum Boost version to 1.74, which is what Ubuntu 22.04 supplies,

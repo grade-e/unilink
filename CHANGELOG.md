@@ -6,7 +6,7 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
-## Unreleased
+## v0.9.6 - 2026-08-30
 
 ### Added
 
@@ -30,6 +30,51 @@ and ABI policy.
 
   The Python bindings raised `AttributeError: backpressure_threshold is
   write-only` on read for the same reason, and can now expose real properties.
+
+### Fixed
+
+- `set_io_thread_init()` is reachable from the umbrella header.
+
+  `wirestead/wirestead.hpp` did not pull in the header that declares it, so the
+  documented way to install a thread-init hook only compiled if you also
+  included the transport header directly. Anyone following `docs/tuning.md`
+  with just the umbrella include got an undeclared-identifier error.
+
+### Packaging
+
+- `package.xml` is now installed to `share/wirestead/`.
+
+  A `cmake` build-type package is discovered through that file, so without it
+  `ros2 pkg list` and the ament index did not see Wirestead once it was
+  installed from a Debian. Nothing else changes: the library, headers and
+  `wiresteadConfig.cmake` were always installed, and `find_package(wirestead)`
+  behaved correctly the whole time.
+
+- Boost is declared as a build-time dependency only, and narrowed to the parts
+  actually used.
+
+  `package.xml` declared `<depend>boost</depend>`, which resolves to
+  `libboost-all-dev` and, because `<depend>` covers exec as well as build, put
+  it in the runtime `Depends:` of the generated Debian. `libwirestead.so` has no
+  Boost `NEEDED` entry at all - Asio and System are header-only since 1.69 - so
+  this was 383 MB of `-dev` packages on every machine that installed Wirestead.
+  It is now `libboost-dev` and `libboost-system-dev` as `build_depend` and
+  `build_export_depend`, which is 139 MB at build time and nothing at runtime.
+
+  Only Debian packaging is affected. Source, vcpkg and Conan builds resolve
+  Boost through their own mechanisms and are unchanged.
+
+### Compatibility
+
+- **Release this rather than v0.9.5 if you are packaging Wirestead for ROS 2.**
+  Both packaging fixes above landed after v0.9.5, so a Bloom release from that
+  tag produces a Debian that ROS tooling cannot discover and that drags
+  `libboost-all-dev` onto every installation.
+
+- No source-level breaking changes. Everything added is a getter alongside an
+  existing setter, and the umbrella-header fix only makes a documented API
+  reachable where it previously failed to compile.
+
 
 ## v0.9.5 - 2026-08-16
 
