@@ -44,11 +44,17 @@ and ABI policy.
 
 - `package.xml` is now installed to `share/wirestead/`.
 
-  A `cmake` build-type package is discovered through that file, so without it
-  `ros2 pkg list` and the ament index did not see Wirestead once it was
-  installed from a Debian. Nothing else changes: the library, headers and
-  `wiresteadConfig.cmake` were always installed, and `find_package(wirestead)`
-  behaved correctly the whole time.
+  Without it the Debian carried no package manifest at all - no machine-readable
+  license, maintainer or dependency metadata at the path the ROS ecosystem looks
+  for it. Nothing else changes: the library, headers and `wiresteadConfig.cmake`
+  were always installed, and `find_package(wirestead)` behaved correctly the
+  whole time.
+
+  This matches what released `build_type: cmake` packages do; every one of the
+  eight in Jazzy ships `share/<pkg>/package.xml`. It does **not** make the
+  package visible to `ros2 pkg list` or `ros2 pkg prefix`, which read an ament
+  index marker that plain CMake packages generally do not install -
+  `foonathan_memory_vendor` behaves the same way.
 
 - Boost is declared as a build-time dependency only, and narrowed to the parts
   actually used.
