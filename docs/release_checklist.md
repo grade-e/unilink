@@ -6,6 +6,11 @@ CI, CPack, and consumer smoke workflows live here.
 ## Version
 
 - [ ] `CMakeLists.txt` project version is updated.
+- [ ] `package.xml` version matches it. Bloom reads this file, not
+      `CMakeLists.txt`, so the two drifting apart releases a Debian under
+      the wrong version.
+- [ ] `CHANGELOG.rst` has an entry for the release. The ROS release tooling
+      reads this file; `CHANGELOG.md` alone is not enough.
 - [ ] Release tag matches the project version.
 - [ ] README version-sensitive examples are still valid.
 
