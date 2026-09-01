@@ -489,11 +489,9 @@ TEST_F(AsyncLoggingTest, BasicAsyncLoggingSetup) {
   // Test basic async logging configuration
   diagnostics::AsyncLogConfig config;
   config.max_queue_size = 1000;
-  config.batch_size = 50;
   config.flush_interval = std::chrono::milliseconds(100);
 
   EXPECT_EQ(config.max_queue_size, 1000);
-  EXPECT_EQ(config.batch_size, 50);
   EXPECT_EQ(config.flush_interval.count(), 100);
 }
 
@@ -501,7 +499,6 @@ TEST_F(AsyncLoggingTest, AsyncLoggingEnabled) {
   // Setup async logging
   diagnostics::AsyncLogConfig config;
   config.max_queue_size = 1000;
-  config.batch_size = 10;
   config.flush_interval = std::chrono::milliseconds(50);
 
   diagnostics::Logger::instance().set_async_logging(true, config);
@@ -526,7 +523,6 @@ TEST_F(AsyncLoggingTest, AsyncLoggingWithFileOutput) {
   // Setup async logging with file output
   diagnostics::AsyncLogConfig config;
   config.max_queue_size = 1000;
-  config.batch_size = 20;
   config.flush_interval = std::chrono::milliseconds(100);
 
   diagnostics::Logger::instance().set_file_output(log_filename);
@@ -548,7 +544,6 @@ TEST_F(AsyncLoggingTest, AsyncLoggingPerformance) {
   // Test async logging performance
   diagnostics::AsyncLogConfig config;
   config.max_queue_size = 10000;
-  config.batch_size = 100;
   config.flush_interval = std::chrono::milliseconds(50);
 
   diagnostics::Logger::instance().set_async_logging(true, config);
@@ -585,7 +580,6 @@ TEST_F(AsyncLoggingTest, AsyncLoggingDisable) {
   // Test disabling async logging
   diagnostics::AsyncLogConfig config;
   config.max_queue_size = 1000;
-  config.batch_size = 50;
 
   // Enable async logging
   diagnostics::Logger::instance().set_async_logging(true, config);
