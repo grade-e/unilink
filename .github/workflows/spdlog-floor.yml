@@ -21,12 +21,15 @@ name: spdlog floor
 # vendored package, and it is below the declared minimum.
 #
 # The minimum is a CACHE STRING, so these jobs lower the gate for themselves
-# with -D and leave the shipped default alone. Nothing a consumer sees changes
-# until a separate pull request lowers the default, and that pull request should
-# cite a run of this workflow rather than an argument. The declared minimum
+# with -D rather than depending on the shipped default. The declared minimum
 # reaches three generated places - wiresteadConfig.cmake's find_dependency, the
-# Debian depends string and the RPM requires string - so lowering it first would
-# propagate an untested claim into all three.
+# Debian depends string and the RPM requires string - so lowering it on an
+# argument rather than a run would have propagated an untested claim into all
+# three.
+#
+# The answer came back on 2026-09-01: all three jobs build and pass. So the
+# floor is settled, the declared minimum is 1.8, and these jobs are now the
+# thing that keeps it true - they fail the build rather than reporting.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

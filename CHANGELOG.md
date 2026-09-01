@@ -6,6 +6,27 @@ This project follows the Keep a Changelog section names where practical. The
 core C++ API is still pre-1.0; see `docs/api_stability.md` for compatibility
 and ABI policy.
 
+## Unreleased
+
+### Changed
+
+- The minimum supported spdlog version is now **1.8**, down from 1.9.
+
+  1.9 was never an API floor. It is where `spdlog::sinks::callback_sink`
+  arrived, which is the likely origin of the number, but this library derives
+  its own callback sink from `spdlog::sinks::base_sink` and has done since that
+  code was written. Every other spdlog name it uses predates 1.1.
+
+  Nothing under `wirestead/` compiles conditionally on `SPDLOG_VERSION`, so an
+  older spdlog cannot quietly remove a feature and leave a passing build behind.
+  `.github/workflows/spdlog-floor.yml` builds and runs the unit suite against
+  1.8.2 on Ubuntu 22.04 amd64 and arm64 and on CentOS Stream 9, and is the thing
+  that keeps the floor true from here.
+
+  Lowering a floor cannot break an existing consumer - anyone who satisfied 1.9
+  satisfies 1.8. What it opens is platforms whose vendored spdlog sits below
+  1.9, which includes RPM-based embedded targets.
+
 ## v0.9.6 - 2026-08-30
 
 ### Added
