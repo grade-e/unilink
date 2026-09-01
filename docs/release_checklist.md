@@ -11,6 +11,9 @@ CI, CPack, and consumer smoke workflows live here.
       the wrong version.
 - [ ] `CHANGELOG.rst` has an entry for the release. The ROS release tooling
       reads this file; `CHANGELOG.md` alone is not enough.
+- [ ] `packaging/wirestead.spec` carries the same version, and the same Boost
+      and spdlog floors as `cmake/WiresteadDependencies.cmake`. RPM cannot read
+      those from CMake, so nothing fails when they drift apart.
 - [ ] Release tag matches the project version.
 - [ ] README version-sensitive examples are still valid.
 
