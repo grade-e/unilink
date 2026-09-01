@@ -1,0 +1,145 @@
+name: spdlog floor
+
+# Answers one question: how far below the declared spdlog minimum does this
+# library still build?
+#
+# WIRESTEAD_MIN_SPDLOG_VERSION defaults to 1.9, and unlike the Boost minimum
+# next to it in cmake/WiresteadDependencies.cmake, nothing recorded why. The
+# likely origin is spdlog::sinks::callback_sink, which arrived in 1.9.0 - but
+# this project does not use it. diagnostics/logger.cc derives its own callback
+# sink from spdlog::sinks::base_sink, which has been there since 1.0. Every
+# other spdlog name in the codebase is the same vintage: logger,
+# register_logger, drop, level::level_enum, dist_sink, rotating_file_sink,
+# stdout_color_sink, stderr_color_sink.
+#
+# There is no conditional compilation on SPDLOG_VERSION anywhere in wirestead/,
+# so an older spdlog cannot silently remove a feature and leave a green build
+# behind. Either it compiles with everything present, or it does not compile.
+#
+# 1.8.2 is the version worth knowing about because that is what an RPM-based
+# embedded platform this library is being packaged for supplies through a
+# vendored package, and it is below the declared minimum.
+#
+# The minimum is a CACHE STRING, so these jobs lower the gate for themselves
+# with -D and leave the shipped default alone. Nothing a consumer sees changes
+# until a separate pull request lowers the default, and that pull request should
+# cite a run of this workflow rather than an argument. The declared minimum
+# reaches three generated places - wiresteadConfig.cmake's find_dependency, the
+# Debian depends string and the RPM requires string - so lowering it first would
+# propagate an untested claim into all three.
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'cmake/**'
+      - 'wirestead/**'
+      - '.github/workflows/spdlog-floor.yml'
+  pull_request:
+    paths:
+      - 'cmake/**'
+      - 'wirestead/**'
+      - '.github/workflows/spdlog-floor.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  floor:
+    name: ${{ matrix.label }} (spdlog ${{ matrix.spdlog }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04 and CentOS Stream 9 both carry GCC 11, which is what
+          # the RPM-based target compiles with. arm64 is here because that is
+          # the architecture the target runs on.
+          - label: Ubuntu 22.04 amd64
+            image: ubuntu:22.04
+            runner: ubuntu-24.04
+            spdlog: "1.8.2"
+          - label: Ubuntu 22.04 arm64
+            image: ubuntu:22.04
+            runner: ubuntu-22.04-arm
+            spdlog: "1.8.2"
+          - label: CentOS Stream 9 amd64
+            image: quay.io/centos/centos:stream9
+            runner: ubuntu-24.04
+            spdlog: "1.8.2"
+
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Install toolchain and dependencies (Debian)
+        if: startsWith(matrix.image, 'ubuntu')
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential cmake ninja-build git libboost-all-dev
+
+      - name: Install toolchain and dependencies (RPM)
+        if: startsWith(matrix.image, 'quay.io/centos')
+        run: |
+          dnf -y install epel-release
+          dnf -y install --enablerepo=crb \
+            gcc-c++ cmake ninja-build git boost-devel
+
+      # Built from source rather than installed: no distribution ships 1.8.2,
+      # which is the whole point of the exercise. spdlog bundles its own fmt,
+      # so nothing else has to be pinned alongside it.
+      - name: Build spdlog ${{ matrix.spdlog }} from source
+        run: |
+          git clone --depth 1 --branch v${{ matrix.spdlog }} \
+            https://github.com/gabime/spdlog.git /tmp/spdlog
+          cmake -S /tmp/spdlog -B /tmp/spdlog/build -G Ninja \
+            -DCMAKE_INSTALL_PREFIX=/tmp/spdlog-prefix \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+            -DSPDLOG_BUILD_SHARED=ON \
+            -DSPDLOG_BUILD_EXAMPLE=OFF
+          cmake --build /tmp/spdlog/build -j2
+          cmake --install /tmp/spdlog/build
+
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Report what is actually installed
+        run: |
+          cmake --version | head -1
+          c++ --version | head -1
+          # The version that matters is whatever got built, not the one this
+          # matrix expects; print it so a surprise is visible in the log rather
+          # than inferred from a failure.
+          grep -hE "define SPDLOG_VER_(MAJOR|MINOR|PATCH)" \
+            /tmp/spdlog-prefix/include/spdlog/version.h
+
+      - name: Configure against the lowered floor
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/tmp/spdlog-prefix \
+            -DWIRESTEAD_MIN_SPDLOG_VERSION=1.8 \
+            -DWIRESTEAD_BUILD_TESTS=ON
+
+      # A green build here would be worthless if CMake had quietly fallen back
+      # to FetchContent and pulled a current spdlog instead of finding the one
+      # just built. Fail loudly if that happened.
+      - name: Verify the pinned spdlog was the one used
+        run: |
+          grep -q "^spdlog_DIR:PATH=/tmp/spdlog-prefix" build/CMakeCache.txt \
+            || { echo "spdlog_DIR is not the pinned build:"; \
+                 grep "^spdlog_DIR" build/CMakeCache.txt; exit 1; }
+
+      - name: Build
+        run: cmake --build build -j2
+
+      - name: Unit tests
+        run: ctest --test-dir build --output-on-failure --parallel 2 -L unit
