@@ -60,7 +60,12 @@ elseif(APPLE)
   set(CPACK_DMG_VOLUME_NAME "Wirestead ${PROJECT_VERSION}")
   set(CPACK_DMG_FORMAT "UDZO")
 elseif(UNIX)
-  set(CPACK_GENERATOR "TGZ;DEB;RPM")
+  # No RPM generator. packaging/wirestead.spec is the supported RPM path: it
+  # splits runtime from -devel the way an RPM distribution expects, and it is
+  # built by the distribution's own toolchain rather than by whatever host
+  # happens to run cpack. A CPack RPM produced on Ubuntu carries Ubuntu's glibc
+  # dependencies and would not install on the distributions that use RPM.
+  set(CPACK_GENERATOR "TGZ;DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER
       "${CPACK_PACKAGE_VENDOR} <${CPACK_PACKAGE_CONTACT}>"
   )
@@ -87,36 +92,13 @@ elseif(UNIX)
   )
   set(CPACK_DEBIAN_PACKAGE_SUGGESTS "cmake, pkg-config")
   set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libc6-dev")
-  set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
-  set(CPACK_RPM_PACKAGE_GROUP "Development/Libraries")
-  set(CPACK_RPM_PACKAGE_URL "${CPACK_PACKAGE_HOMEPAGE_URL}")
-  # boost-system is the runtime library alone and carries no headers, so a
-  # consumer who installed this package could not compile against it. boost-devel
-  # is the one that supplies boost/asio and the component CMake files, and it is
-  # what packaging/wirestead.spec asks for.
-  set(_wirestead_rpm_package_requires
-      "boost-devel >= ${WIRESTEAD_MIN_BOOST_VERSION}"
-  )
-  if(NOT WIRESTEAD_SPDLOG_BUNDLED)
-    list(APPEND _wirestead_rpm_package_requires
-         "spdlog-devel >= ${WIRESTEAD_MIN_SPDLOG_VERSION}"
-    )
-  endif()
-  string(JOIN ", " CPACK_RPM_PACKAGE_REQUIRES
-         ${_wirestead_rpm_package_requires}
-  )
-  set(CPACK_RPM_PACKAGE_SUGGESTS "cmake, pkg-config")
-  set(CPACK_RPM_PACKAGE_RECOMMENDS "glibc-devel")
 
   if(_wirestead_processor_lower MATCHES "x86_64|amd64|x64")
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "amd64")
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
   elseif(_wirestead_processor_lower MATCHES "i[3-6]86")
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "i386")
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "i386")
   elseif(_wirestead_processor_lower MATCHES "aarch64|arm64")
     set(CPACK_DEBIAN_PACKAGE_ARCHITECTURE "arm64")
-    set(CPACK_RPM_PACKAGE_ARCHITECTURE "aarch64")
   endif()
 endif()
 
