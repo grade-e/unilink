@@ -8,6 +8,35 @@ and ABI policy.
 
 ## Unreleased
 
+### Fixed
+
+- The CPack Debian package named the wrong Boost package.
+
+  It required only `libboost-system-dev`. The package ships the headers as well
+  as the shared library, and those headers reach `boost/asio`, so it also needs
+  `libboost-dev`. `libboost-system-dev` stays, because `wiresteadConfig.cmake`
+  calls `find_dependency(Boost COMPONENTS system)` and that needs the
+  component's CMake files. These are the same two keys `package.xml` has
+  declared since v0.9.6; the CPack side was missed then because only the ROS
+  packaging was in view.
+
+  A CPack package has never been published, so nothing installed is affected.
+
+### Removed
+
+- The CPack RPM generator.
+
+  `packaging/wirestead.spec` is the supported RPM path as of that file landing.
+  It splits runtime from `-devel` the way an RPM distribution expects, and it is
+  built by the distribution's own toolchain. A CPack RPM is a single combined
+  package built by whatever host runs `cpack`, so one produced on Ubuntu carries
+  Ubuntu's glibc dependencies and will not install on an RPM distribution.
+
+  Nothing ran it: `release.yml` passes `TGZ` on every Linux row, so the RPM
+  settings had never executed, which is how they came to require `boost-system`
+  - a package with no headers - without anyone noticing. Two RPM paths that
+  disagree is the condition that let that survive.
+
 ### Changed
 
 - The minimum supported spdlog version is now **1.8**, down from 1.9.
