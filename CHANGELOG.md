@@ -8,6 +8,23 @@ and ABI policy.
 
 ## Unreleased
 
+### Fixed
+
+- The CPack packages named the wrong Boost package.
+
+  The RPM required `boost-system`, which is the runtime library and carries no
+  headers, so anyone who installed the package could not compile against it -
+  `wirestead/wirestead.hpp` reaches `boost/asio`. It now requires `boost-devel`.
+  The Debian package required only `libboost-system-dev` and now also requires
+  `libboost-dev`, which is where the headers are; `libboost-system-dev` stays
+  because `wiresteadConfig.cmake` calls `find_dependency(Boost COMPONENTS
+  system)` and that needs the component's CMake files.
+
+  These are the same two keys `package.xml` has declared since v0.9.6. The CPack
+  side was missed then because only the ROS packaging was in view.
+
+  A CPack package has never been published, so nothing installed is affected.
+
 ### Changed
 
 - The minimum supported spdlog version is now **1.8**, down from 1.9.

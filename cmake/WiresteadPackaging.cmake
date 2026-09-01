@@ -66,7 +66,15 @@ elseif(UNIX)
   )
   set(CPACK_DEBIAN_PACKAGE_SECTION "libs")
   set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+  # This package ships the headers as well as the shared library, and those
+  # headers include boost/asio, so a consumer needs Boost's headers to compile
+  # against it - libboost-dev. libboost-system-dev comes too because
+  # wiresteadConfig.cmake calls find_dependency(Boost COMPONENTS system) and
+  # that needs the component's CMake files. libwirestead.so links no Boost
+  # library of its own; Asio and Boost.System have been header-only since 1.69.
+  # These are the same two keys package.xml declares.
   set(_wirestead_debian_package_depends
+      "libboost-dev (>= ${WIRESTEAD_MIN_BOOST_VERSION})"
       "libboost-system-dev (>= ${WIRESTEAD_MIN_BOOST_VERSION})"
   )
   if(NOT WIRESTEAD_SPDLOG_BUNDLED)
@@ -82,8 +90,12 @@ elseif(UNIX)
   set(CPACK_RPM_PACKAGE_LICENSE "Apache-2.0")
   set(CPACK_RPM_PACKAGE_GROUP "Development/Libraries")
   set(CPACK_RPM_PACKAGE_URL "${CPACK_PACKAGE_HOMEPAGE_URL}")
+  # boost-system is the runtime library alone and carries no headers, so a
+  # consumer who installed this package could not compile against it. boost-devel
+  # is the one that supplies boost/asio and the component CMake files, and it is
+  # what packaging/wirestead.spec asks for.
   set(_wirestead_rpm_package_requires
-      "boost-system >= ${WIRESTEAD_MIN_BOOST_VERSION}"
+      "boost-devel >= ${WIRESTEAD_MIN_BOOST_VERSION}"
   )
   if(NOT WIRESTEAD_SPDLOG_BUNDLED)
     list(APPEND _wirestead_rpm_package_requires
