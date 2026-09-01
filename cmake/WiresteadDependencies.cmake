@@ -16,8 +16,17 @@ set(WIRESTEAD_MIN_BOOST_VERSION
     1.74.0
     CACHE STRING "Minimum supported Boost version"
 )
+# 1.9 is where spdlog::sinks::callback_sink arrived, which is the likely origin
+# of that number - but this library derives its own callback sink from
+# spdlog::sinks::base_sink in diagnostics/logger.cc, and every other spdlog name
+# it uses predates 1.1: logger, register_logger, drop, level::level_enum,
+# dist_sink, rotating_file_sink, stdout_color_sink, stderr_color_sink. Nothing
+# under wirestead/ compiles conditionally on SPDLOG_VERSION, so an older spdlog
+# cannot quietly remove a feature - it either builds with everything or not at
+# all. .github/workflows/spdlog-floor.yml builds and runs the unit suite against
+# 1.8.2 on three platforms so the claim is measured rather than assumed.
 set(WIRESTEAD_MIN_SPDLOG_VERSION
-    1.9
+    1.8
     CACHE STRING "Minimum supported spdlog version"
 )
 
