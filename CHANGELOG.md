@@ -24,6 +24,19 @@ and ABI policy.
 
 ### Removed
 
+- `AsyncLogConfig::batch_size` and `AsyncLogConfig::enable_batch_processing`,
+  and the three-argument `AsyncLogConfig` constructor that took a batch size.
+
+  Neither field was ever read. Setting `batch_size` did nothing and said
+  nothing, which is worse than not offering it, and the field sat in the middle
+  of a public constructor's parameter list where a caller had to pass something
+  for it. `enable_batch_processing` was referenced nowhere at all. spdlog
+  manages its own batching behind the async logger, so there was never anything
+  for either to control.
+
+  The constructor had no callers anywhere in the repository. Anyone who used it
+  can construct the struct and assign the two fields that remain.
+
 - The CPack RPM generator.
 
   `packaging/wirestead.spec` is the supported RPM path as of that file landing.

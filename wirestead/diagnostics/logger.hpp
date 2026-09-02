@@ -63,10 +63,15 @@ enum class LogOutput { CONSOLE = 0x01, FILE = 0x02, CALLBACK = 0x04 };
  * @brief Log rotation configuration
  */
 struct LogRotationConfig {
-  size_t max_file_size_bytes = 10 * 1024 * 1024;    // 10MB default
-  size_t max_files = 10;                            // Keep 10 files max
-  bool enable_compression = false;                  // Reserved for future use
-  std::string file_pattern = "{name}.{index}.log";  // Reserved for future use
+  size_t max_file_size_bytes = 10 * 1024 * 1024;  // 10MB default
+  size_t max_files = 10;                          // Keep 10 files max
+
+  // Neither of the next two is supported by the rotating sink behind this API,
+  // and neither is silently ignored: set_file_output_with_rotation reports an
+  // error and returns false if compression is enabled or the pattern differs
+  // from the default below.
+  bool enable_compression = false;
+  std::string file_pattern = "{name}.{index}.log";
 
   LogRotationConfig() = default;
 
@@ -78,16 +83,11 @@ struct LogRotationConfig {
  */
 struct AsyncLogConfig {
   size_t max_queue_size = 10000;                     // Maximum queue size
-  size_t batch_size = 100;                           // Reserved; spdlog manages batching internally
   std::chrono::milliseconds flush_interval{100};     // Flush interval
   std::chrono::milliseconds shutdown_timeout{5000};  // Shutdown timeout
-  bool enable_backpressure = true;                   // Enable backpressure handling (maps to spdlog block policy)
-  bool enable_batch_processing = true;               // Reserved; spdlog manages batching internally
+  bool enable_backpressure = true;                   // Maps to spdlog's block policy
 
   AsyncLogConfig() = default;
-
-  AsyncLogConfig(size_t max_q, size_t batch, std::chrono::milliseconds interval)
-      : max_queue_size(max_q), batch_size(batch), flush_interval(interval) {}
 };
 
 /**
